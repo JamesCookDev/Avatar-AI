@@ -5,8 +5,39 @@ dotenv.config();
 const openAIApiKey = process.env.OPENAI_API_KEY;
 const elevenLabsApiKey = process.env.ELEVEN_LABS_API_KEY;
 
+const kokoroUrl = (process.env.KOKORO_TTS_URL || "").trim();
+
+async function tryKokoroTTS(text) {
+  if (!kokoroUrl) return null;
+
+  try {
+    // Endpoint genérico: POST { text } e retorna audio bytes (wav/mp3)
+    const res = await fetch(kokoroUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+
+    if (!res.ok) {
+      console.error("Kokoro TTS error:", res.status, await res.text());
+      return null;
+    }
+
+    const arrayBuffer = await res.arrayBuffer();
+    const base64 = Buffer.from(arrayBuffer).toString("base64");
+
+    // Se o frontend espera "data:audio/wav;base64,", coloque aqui:
+    // (vamos ajustar conforme o formato que seu front usa)
+    return `data:audio/wav;base64,${base64}`;
+  } catch (err) {
+    console.error("Kokoro TTS fetch failed:", err);
+    return null;
+  }
+}
+
 async function sendDefaultMessages({ userMessage }) {
   let messages;
+
   if (!userMessage) {
     messages = [
       {
@@ -26,27 +57,8 @@ async function sendDefaultMessages({ userMessage }) {
     ];
     return messages;
   }
-  if (!elevenLabsApiKey || !openAIApiKey) {
-    messages = [
-      {
-        text: "Please my friend, don't forget to add your API keys!",
-        audio: await audioFileToBase64({ fileName: "audios/api_0.wav" }),
-        lipsync: await readJsonTranscript({ fileName: "audios/api_0.json" }),
-        facialExpression: "angry",
-        animation: "TalkingThree",
-      },
-      {
-        text: "You don't want to ruin Jack with a crazy ChatGPT and ElevenLabs bill, right?",
-        audio: await audioFileToBase64({ fileName: "audios/api_1.wav" }),
-        lipsync: await readJsonTranscript({ fileName: "audios/api_1.json" }),
-        facialExpression: "smile",
-        animation: "Angry",
-      },
-    ];
-    return messages;
-  }
 }
-
+  // Resposta padrão
 const defaultResponse = [
   {
     text: "I'm sorry, there seems to be an error with my brain, or I didn't understand. Could you please repeat your question?",

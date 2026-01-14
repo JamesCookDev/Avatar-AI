@@ -9,6 +9,7 @@ import { convertAudioToText } from "./modules/whisper.mjs";
 dotenv.config();
 
 const elevenLabsApiKey = process.env.ELEVEN_LABS_API_KEY;
+const openAIApiKey = process.env.OPENAI_API_KEY;
 
 const app = express();
 app.use(express.json());
@@ -26,7 +27,37 @@ app.post("/tts", async (req, res) => {
     res.send({ messages: defaultMessages });
     return;
   }
+const openAIApiKey = process.env.OPENAI_API_KEY;
+
+if (!openAIApiKey) {
+  const local = {
+    messages: [
+      {
+        text: req.body.message,
+        facialExpression: "smile",
+        animation: "TalkingOne",
+      },
+    ],
+  };
+  const withLip = await lipSync({ messages: local.messages });
+  res.send({ messages: withLip });
+  return;
+}
   let openAImessages;
+  if (!openAIApiKey) {
+  const local = {
+    messages: [
+      {
+        text: userMessage,
+        facialExpression: "smile",
+        animation: "TalkingOne",
+      },
+    ],
+  };
+  const withLip = await lipSync({ messages: local.messages });
+  res.send({ messages: withLip });
+  return;
+}
   try {
     openAImessages = await openAIChain.invoke({
       question: userMessage,

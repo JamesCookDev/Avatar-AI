@@ -10,7 +10,13 @@ async function convertAudioToText({ audioData }) {
   const mp3AudioData = await convertAudioToMp3({ audioData });
   const outputPath = "/tmp/output.mp3";
   fs.writeFileSync(outputPath, mp3AudioData);
-  const loader = new OpenAIWhisperAudio(outputPath, { clientOptions: { apiKey: openAIApiKey } });
+  const loader = new OpenAIWhisperAudio(outputPath, {
+  clientOptions: { apiKey: openAIApiKey },
+  whisperOptions: {
+    language: "pt",
+    task: "transcribe"
+  }
+});
   const doc = (await loader.load()).shift();
   const transcribedText = doc.pageContent;
   fs.unlinkSync(outputPath);
