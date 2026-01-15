@@ -5,9 +5,12 @@ import { openAIChain, parser } from "./modules/openAI.mjs";
 import { lipSync } from "./modules/lip-sync.mjs";
 import { sendDefaultMessages, defaultResponse } from "./modules/defaultMessages.mjs";
 import { convertAudioToText } from "./modules/whisper.mjs";
+import multer from "multer";
+
 
 dotenv.config();
 
+const upload = multer({ storage: multer.memoryStorage() });
 const elevenLabsApiKey = process.env.ELEVEN_LABS_API_KEY;
 const openAIApiKey = process.env.OPENAI_API_KEY;
 
@@ -71,6 +74,7 @@ if (!openAIApiKey) {
 });
 
 app.post("/sts", async (req, res) => {
+  console.log("STS hit: bytes(base64) =", (req.body.audio || "").length);
   const base64Audio = req.body.audio;
   const audioData = Buffer.from(base64Audio, "base64");
   const userMessage = await convertAudioToText({ audioData });
@@ -89,4 +93,23 @@ app.post("/sts", async (req, res) => {
 
 app.listen(port, () => {
   console.log(`Jack are listening on port ${port}`);
+});
+
+app.post("/whisper", upload.single("audio_file"), async (req, res) => {
+  try {
+    if (!req.file?.buffer) {
+      return res.status(400).json({ error: "audio_file ausente" });
+    }
+    const text = await convertAudioToText({ audioData: req.file.buffer });
+    return res.json({ text });
+  } catch (e) {
+    console.error("Whisper /whisper error:", e);
+    return res.status(500).json({ error: "whisper_failed" });
+  }
+});
+
+app.post("/chat", async (req, res) => {
+  // reaproveita exatamente a mesma lógica do /tts
+  req.url = "/tts";
+  return app._router.handle(req, res);
 });
