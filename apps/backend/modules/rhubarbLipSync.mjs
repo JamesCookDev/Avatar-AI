@@ -1,21 +1,36 @@
 import { execCommand } from "../utils/files.mjs";
+import path from "path";
+import os from "os";
 
 const getPhonemes = async ({ message }) => {
   try {
     const time = new Date().getTime();
-    console.log(`Starting conversion for message ${message}`);
-    await execCommand(
-      { command: `ffmpeg -y -i audios/message_${message}.mp3 audios/message_${message}.wav` }
-      // -y to overwrite the file
-    );
-    console.log(`Conversion done in ${new Date().getTime() - time}ms`);
-    await execCommand({
-      command: `./bin/rhubarb -f json -o audios/message_${message}.json audios/message_${message}.wav -r phonetic`,
-    });
-    // -r phonetic is faster but less accurate
-    console.log(`Lip sync done in ${new Date().getTime() - time}ms`);
+    console.log(`👄 [LipSync] Iniciando visemas para mensagem ${message}`);
+
+    // 1. Detecta se é Windows
+    const isWindows = os.platform() === "win32";
+    
+    // 2. Define o nome do executável correto
+    const binName = isWindows ? "rhubarb.exe" : "rhubarb";
+    
+    // 3. Cria o caminho ABSOLUTO (C:\Users\...\bin\rhubarb.exe)
+    // Isso resolve o erro de '.' não reconhecido
+    const binPath = path.join(process.cwd(), "bin", binName);
+
+    // 4. Caminhos dos arquivos
+    const audioFile = path.join("audios", `message_${message}.wav`);
+    const jsonFile = path.join("audios", `message_${message}.json`);
+
+    // 5. Comando blindado com aspas (para evitar erro com espaços na pasta)
+    const command = `"${binPath}" -f json -o "${jsonFile}" "${audioFile}" -r phonetic`;
+
+    console.log(`🔧 [LipSync] Executando comando: ${command}`);
+
+    await execCommand({ command });
+
+    console.log(`✅ [LipSync] Sucesso em ${new Date().getTime() - time}ms`);
   } catch (error) {
-    console.error(`Error while getting phonemes for message ${message}:`, error);
+    console.error(`❌ [LipSync] Erro fatal:`, error);
   }
 };
 
