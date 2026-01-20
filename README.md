@@ -1,207 +1,229 @@
-https://github.com/asanchezyali/talking-avatar-with-ai/assets/29262782/da316db9-6dd1-4475-9fe5-39dafbeb3cc4
+# 🦜 O Guia Turístico *Paraense* Virtual!  
+### Totem Interativo com Avatar 3D e IA Conversacional
 
-## Digital Human
+Jack é um **Avatar 3D interativo** projetado para **totens de autoatendimento**, atuando como um **guia turístico virtual especializado em Belém/PA**.  
+O sistema é capaz de **ouvir o usuário**, **entender linguagem natural** e **responder em tempo real com voz sintetizada e sincronia labial**, garantindo uma experiência imersiva e natural.
 
-This project is a digital human that can talk and listen to you. It uses OpenAI's GPT-3 to generate responses, OpenAI's
-Whisper to transcript the audio, Eleven Labs to generate voice and Rhubarb Lip Sync to generate the lip sync. The tutorial
-to understand all the details of the repository can be found at [Monadical](https://monadical.com/posts/build-a-digital-human-with-large-language-models.html).
+---
 
-I have made this Discord channel available: [Math & Code](https://discord.gg/gJ3vCgSWeh) to resolve doubts about the configurations of this project in development.
+## ✨ Funcionalidades Principais
 
-The brain of this project is based on Open AI, where the avatar characteristics and the shape of the response are
-defined in the following code fragment:
+- 🎤 Reconhecimento de voz em tempo real (STT)
+- 🧠 Conversação com IA especializada em turismo local
+- 🔊 Síntese de voz neural em português brasileiro
+- 👄 Sincronia labial automática (visemas)
+- 😀 Expressões faciais e animações corporais
+- ⚡ Baixa latência com arquitetura híbrida (Local + Nuvem)
+- 🔁 Fallback automático de IA (nunca fica “mudo”)
 
-```js
-import { ChatOpenAI } from "@langchain/openai";
-import { ChatPromptTemplate } from "@langchain/core/prompts";
-import { StructuredOutputParser } from "langchain/output_parsers";
-import { z } from "zod";
-import dotenv from "dotenv";
+---
 
-dotenv.config();
+## 🏗️ Arquitetura do Sistema
 
-const template = `
-  You are Jack, a world traveler.
-  You will always respond with a JSON array of messages, with a maximum of 3 messages:
-  \n{format_instructions}.
-  Each message has properties for text, facialExpression, and animation.
-  The different facial expressions are: smile, sad, angry, surprised, funnyFace, and default.
-  The different animations are: Idle, TalkingOne, TalkingThree, SadIdle, Defeated, Angry, 
-  Surprised, DismissingGesture and ThoughtfulHeadShake.
-`;
+O projeto utiliza uma **Arquitetura Híbrida de Alta Disponibilidade**, combinando o poder de processamento da **nuvem** (para inteligência artificial) com a velocidade do **processamento local** (para voz e baixa latência).
 
-const prompt = ChatPromptTemplate.fromMessages([
-  ["ai", template],
-  ["human", "{question}"],
-]);
+Essa abordagem garante que o **totem continue operando mesmo com instabilidades de rede** e reduz drasticamente os **custos operacionais**, mantendo respostas rápidas e naturais.
 
-const model = new ChatOpenAI({
-  openAIApiKey: process.env.OPENAI_API_KEY || "-",
-  modelName: process.env.OPENAI_MODEL || "davinci",
-  temperature: 0.2,
-});
+---
 
-const parser = StructuredOutputParser.fromZodSchema(
-  z.object({
-    messages: z.array(
-      z.object({
-        text: z.string().describe("Text to be spoken by the AI"),
-        facialExpression: z
-          .string()
-          .describe(
-            "Facial expression to be used by the AI. Select from: smile, sad, angry, surprised, funnyFace, and default"
-          ),
-        animation: z
-          .string()
-          .describe(
-            `Animation to be used by the AI. Select from: Idle, TalkingOne, TalkingThree, SadIdle, 
-            Defeated, Angry, Surprised, DismissingGesture, and ThoughtfulHeadShake.`
-          ),
-      })
-    ),
-  })
-);
+## 📐 Diagrama da Arquitetura
 
-const openAIChain = prompt.pipe(model).pipe(parser);
+```mermaid
+graph TD
+    %% Estilos
+    classDef frontend fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
+    classDef backend fill:#fff3e0,stroke:#e65100,stroke-width:2px;
+    classDef ai fill:#f3e5f5,stroke:#4a148c,stroke-width:2px,stroke-dasharray: 5 5;
+    classDef local fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px;
 
-export { openAIChain, parser };
+    subgraph "🖥️ Frontend (Totem Interativo)"
+        User((👤 Usuário)) -->|Voz & Gestos| Mic[🎤 Microfone + VAD]
+        Mic -->|Buffer de Áudio| API[📡 API Gateway]
+        Avatar[🕺 Avatar 3D / R3F] -->|Visual + Áudio| User
+    end
 
+    subgraph "⚙️ Backend (Node.js)"
+        API -->|POST /sts| Router[Express Router]
+        
+        subgraph "🧠 Camada de Inteligência (Cloud + Fallback)"
+            Router -->|WAV| STT[👂 Whisper Service]
+            STT -->|Texto| Brain[🧠 LLM Service]
+            
+            %% Lógica de Fallback
+            STT -.->|Principal (Rápido)| GroqW[⚡ Groq Whisper-v3]
+            STT -.->|Backup (Seguro)| OpenAIW[🛡️ OpenAI Whisper-1]
+            
+            Brain -.->|Principal (Guia Local)| GroqL[⚡ Groq Llama 3.3]
+            Brain -.->|Backup (Reserva)| OpenAIL[🛡️ OpenAI GPT-4o]
+        end
+
+        subgraph "⚡ Processamento Local (Zero Latência)"
+            Brain -->|JSON Resposta| TTS[🗣️ Kokoro TTS (Docker)]
+            TTS -->|WAV| LipSync[👄 Rhubarb Lip Sync]
+            LipSync -->|Visemas + Áudio| Router
+        end
+    end
+
+    Router -->|Pacote Final (Áudio + Lipsync)| Avatar
+
+    %% Aplicação de Classes
+    class User,Mic,API,Avatar frontend;
+    class Router backend;
+    class STT,Brain,GroqW,OpenAIW,GroqL,OpenAIL ai;
+    class TTS,LipSync local;
+
+
+
+````
+## 🧩 Componentes da Arquitetura
+
+### 🖥️ Frontend (Totem)
+
+- Responsável pela **detecção de voz (VAD)**, ignorando ruídos ambientes
+- **Renderização do Avatar 3D** com **React Three Fiber**
+- **Reprodução de áudio, visemas e animações** em tempo real
+
+---
+
+### 🧠 Camada de Inteligência (Nuvem com Fallback)
+
+- Utiliza **Groq (LPU)** como provedor principal:
+  - Inferência **ultra-rápida**
+  - **Custo zero** na camada principal
+
+- **Fallback Automático**:
+  - Em falhas ou limites da Groq, redireciona para **OpenAI**
+  - Garante que o totem **nunca fique “mudo”**
+
+---
+
+### ⚡ Processamento Local (Edge)
+
+- **Kokoro TTS (Docker)**
+  - Síntese de voz executada no próprio **mini-PC do totem**
+  - Elimina a latência de download de áudio da internet
+
+- **Rhubarb Lip Sync**
+  - Geração de **visemas em tempo real**
+  - **Sincronia labial** baseada no áudio sintetizado
+
+---
+
+Essa arquitetura permite uma experiência **fluida**, **resiliente** e **escalável**, ideal para **ambientes públicos** com alto fluxo de usuários.
+
+-----
+
+## 🚀 Tecnologias e Stack
+
+### 🎨 Frontend (Interface)
+
+- **React + Vite** — Base da aplicação
+- **React Three Fiber (R3F)** — Renderização do Avatar 3D
+- **Voice Activity Detection (VAD)**
+  - Hook customizado (`useSpeech`)
+  - Detecção baseada em decibéis
+  - Threshold adaptativo para ruído ambiente
+
+---
+
+### 🖥️ Backend (Processamento)
+
+- **Node.js + Express**
+- **Kokoro TTS (Docker)**
+  - Sintetizador neural local ultra-rápido
+  - Voz: `pm_alex` (PT-BR)
+- **Rhubarb Lip Sync**
+  - Geração de visemas a partir de áudio WAV
+
+---
+
+### ☁️ Inteligência Artificial (Nuvem)
+
+O projeto utiliza **fallback automático** para garantir alta disponibilidade.
+
+#### 🎧 Ouvido — STT (Speech to Text)
+
+- **Principal:** Groq — Whisper-large-v3 (gratuito e rápido)
+- **Backup:** OpenAI — Whisper-1 (ativado apenas em falha)
+
+#### 🧠 Cérebro — LLM
+
+- **Principal:** Groq — Llama 3.3 (70B)
+- **Backup:** OpenAI — GPT-4o-mini (erros 429/500)
+
+---
+
+## ⚙️ Fluxo de Dados (Passo a Passo)
+
+### 1. Escuta Inteligente
+- O frontend monitora o microfone
+- Volume acima de **45 dB** inicia a gravação
+- **2s de silêncio** encerram e enviam o áudio
+
+### 2. Transcrição
+- Áudio enviado ao backend em memória (`Buffer`)
+- STT via **Groq Whisper**
+
+### 3. Raciocínio
+- Texto enviado ao LLM com *System Prompt* de  
+  **“Guia Turístico Paraense”**
+- Retorno em **JSON estrito**:
+  - Texto da resposta
+  - Expressão facial
+  - Animação corporal
+
+### 4. Síntese de Voz
+- Texto enviado ao **Kokoro TTS (local)**
+- Geração de arquivo `.wav`
+
+### 5. Sincronia Labial
+- **Rhubarb** analisa o `.wav`
+- Gera `.json` com tempos de visemas
+
+### 6. Resposta ao Frontend
+- Áudio (Base64)
+- Visemas (JSON)
+- Metadados de animação
+
+### 7. Execução
+- Avatar reproduz o áudio
+- Sincroniza a boca
+- Executa animações (ex: sorrir, acenar)
+
+---
+
+## 🛠️ Configuração de Ambiente
+
+Crie um arquivo `.env` na raiz do **backend**:
+
+```env
+# Inteligência Principal (Grátis)
+GROQ_API_KEY=gsk_...
+
+# Inteligência de Reserva (Paga)
+OPENAI_API_KEY=sk-proj-...
+
+# URL do TTS Local (Docker)
+KOKORO_API_URL=http://localhost:8880/v1/audio/speech
 ```
+---
 
-The code performs four main tasks:
+## 📦 Requisitos de Instalação
 
-* It sets up the environment using the dotenv library to establish the necessary environment variables for interacting with the OpenAI API.
+- **Docker Desktop** — necessário para o Kokoro TTS
+- **Node.js v18+**
+- **FFmpeg** instalado no sistema  
+  *(opcional, mas recomendado para processamento de áudio)*
 
-* It defines a "prompt" template using the ChatPromptTemplate class from @langchain/core/prompts. This template guides the conversation as a predefined script for the chat.
+---
 
-* It configures the chat model using the ChatOpenAI class, which relies on OpenAI's "davinci" model if the environment variables have not been configured previously.
+## 🧭 Visão Geral
 
-* It parses the output, designing the response generated by the AI in a specific format that includes details about the facial expression and animation to use, which is crucial for a realistic interaction with Jack.
-  
-* This service integrates with Eleven Labs and Rhubarb Lip-Sync to generate the following client integration interface, where the exchanged data looks something like this:
-```js
-[
-  {
-    text: "I've been to so many places around the world, each with its own unique charm and beauty.",
-    facialExpression: 'smile',
-    animation: 'TalkingOne',
-    audio: '//uQx//uQxAAADG1DHeGEeipZLqI09Jn5AkRGhGiLv9pZ3QRTd3eIR7',
-    lipsync: { metadata: [Object], mouthCues: [Array] }
-  },
-  {
-    text: "There were times when the journey was tough, but the experiences and the people I met along the way made it all worth it.",
-    facialExpression: 'thoughtful',
-    animation: 'TalkingThree',
-    audio: '//uQx//uQxAAADG1DHeGEeipZLqI09Jn5AkRGhGiLv9pZ3QRTd3eIR7',
-    lipsync: { metadata: [Object], mouthCues: [Array] }
-  },  
-{
-    text: :"And there's still so much more to see and explore. The world is a fascinating place!",
-    facialExpression: 'surprised',
-    animation: 'ThoughtfulHeadShake',
-    audio: '//uQx//uQxAAADG1DHeGEeipZLqI09Jn5AkRGhGiLv9pZ3QRTd3eIR7',
-    lipsync: { metadata: [Object], mouthCues: [Array] }
-  }
-]
-```
+Jack foi projetado para ser:
 
-The concept here is to craft a sequence of text accompanied by varied body movements (animations) and diverse facial expressions, aiming to imbue the digital human with a heightened sense of realism in its actions.
+- 🤖 **Inteligente**
+- ⚡ **Rápido**
+- 🗣️ **Natural**
+- 🏛️ **Culturalmente contextualizado**
 
-## How it Operates
-The system operates through two primary workflows, depending on whether the user input is in text or audio form:
-
-### Workflow with Text Input:
-1. **User Input:** The user enters text.
-2. **Text Processing:** The text is forwarded to the OpenAI GPT API for processing.
-3. **Audio Generation:** The response from GPT is relayed to the Eleven Labs TTS API to generate audio.
-4. **Viseme Generation:** The audio is then sent to Rhubarb Lip Sync to produce viseme metadata.
-5. **Synchronization:** The visemes are utilized to synchronize the digital human's lips with the audio.
-
-### Workflow with Audio Input:
-1. **User Input:** The user submits audio.
-2. **Speech-to-Text Conversion:** The audio is transmitted to the OpenAI Whisper API to convert it into text.
-3. **Text Processing:** The converted text is sent to the OpenAI GPT API for further processing.
-4. **Audio Generation:** The output from GPT is sent to the Eleven Labs TTS API to produce audio.
-5. **Viseme Generation:** The audio is then routed to Rhubarb Lip Sync to generate viseme metadata.
-6. **Synchronization:** The visemes are employed to synchronize the digital human's lips with the audio.
-
-<div align="center">
-  <img src="resources/architecture.drawio.svg" alt="System Architecture" width="100%">
-</div>
-
-## Getting Started
-
-### Requirements
-Before using this system, ensure you have the following prerequisites:
-
-1. **OpenAI Subscription:** You must have an active subscription with OpenAI. If you don't have one, you can create it [here](https://openai.com/product).
-2. **Eleven Labs Subscription:** You need to have a subscription with Eleven Labs. If you don't have one yet, you can
-   sign up [here](https://elevenlabs.io/). 
-It's recommended to have the paid version. With the free version, the avatar doesn't work well due to an error caused by too many requests.
-3. **Rhubarb Lip-Sync:** Download the latest version of Rhubarb Lip-Sync compatible with your operating system from the
-   official [Rhubarb Lip-Sync repository](https://github.com/DanielSWolf/rhubarb-lip-sync/releases). Once downloaded,
-   create a `/bin` directory in the backend and move all the contents of the unzipped `rhubarb-lip-sync.zip` into it.
-   Sometimes, the operating system requests permissions, so you need to enable them.
-4. Install `ffmpeg` for  [Mac OS](https://formulae.brew.sh/formula/ffmpeg), [Linux](https://ffmpeg.org/download.html) or [Windows](https://ffmpeg.org/download.html).
-
-### Installation
-
-1. Clone this repository:
-  
-```bash
-git@github.com:asanchezyali/talking-avatar-with-ai.git
-```
-
-2. Navigate to the project directory:
-
-```bash
-cd digital-human
-```
-
-3. Install dependencies for monorepo:
-```bash
-yarn
-```
-4. Create a .env file in the root `/apps/backend/` of the project and add the following environment variables:
-
-```bash
-# OPENAI
-OPENAI_MODEL=<YOUR_GPT_MODEL>
-OPENAI_API_KEY=<YOUR_OPENAI_API_KEY>
-
-# Elevenlabs
-ELEVEN_LABS_API_KEY=<YOUR_ELEVEN_LABS_API_KEY>
-ELVEN_LABS_VOICE_ID=<YOUR_ELEVEN_LABS_VOICE_ID>
-ELEVEN_LABS_MODEL_ID=<YOUR_ELEVEN_LABS_MODEL_ID>
-```
-
-5. Run the development system:
-
-```bash
-yarn dev
-```
-
-6. If you need install another dependence in the monorepo, you can do this:
-
-```bash
-yarn add --dev -W <PACKAGE_NAME>
-yarn
-```
-
-
-Open [http://localhost:5173/](http://localhost:5173/) with your browser to see the result.
-
-## References
-* How ChatGPT, Bard and other LLMs are signaling an evolution for AI digital humans: https://www.digitalhumans.com/blog/how-chatgpt-bard-and-other-llms-are-signaling-an-evolution-for-ai-digital-humans
-* UnneQ Digital Humans: https://www.digitalhumans.com/
-* LLMs: Building a Less Artificial and More Intelligent AI Human: https://www.linkedin.com/pulse/llms-building-less-artificial-more-intelligent-ai-human/
-* Building a digital person design best practices: https://fcatalyst.com/blog/aug2023/building-a-digital-person-design-best-practices
-* Navigating the Era of Digital Humans": An Initial Exploration of a Future Concept: https://www.linkedin.com/pulse/navigating-era-digital-humans-initial-exploration-future-koelmel-eqrje/ 
-* How to Setup Tailwind CSS in React JS with VS Code: https://dev.to/david_bilsonn/how-to-setup-tailwind-css-in-react-js-with-vs-code-59p4 
-* Ex-Human: https://exh.ai/#home
-* Allosaurus: https://github.com/xinjli/allosaurus 
-* Rhubarb Lip-Sync: https://github.com/DanielSWolf/rhubarb-lip-sync
-* Ready Player me - Oculus OVR LipSync: https://docs.readyplayer.me/ready-player-me/api-reference/avatars/morph-targets/oculus-ovr-libsync
-* Ready Player me - Apple Arkit: https://docs.readyplayer.me/ready-player-me/api-reference/avatars/morph-targets/apple-arkit 
-* Mixamo - https://www.mixamo.com/,
-* GLFT -> React Three Fiber - https://gltf.pmnd.rs/)
+Ideal para **totens turísticos**, **museus**, **centros culturais** e **experiências interativas públicas**.
