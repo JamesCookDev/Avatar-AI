@@ -2,20 +2,20 @@ import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
 import fs from "fs";
-import { openAIChain, parser } from "./modules/openAI.mjs";
+import { openAIChain } from "./modules/openAI.mjs"; o
 import { lipSync } from "./modules/rhubarbLipSync.mjs";
-import { sendDefaultMessages, defaultResponse } from "./modules/defaultMessages.mjs";
 import { convertAudioToText } from "./modules/whisper.mjs";
 import kokoro from "./modules/kokoro.mjs"; 
+import crypto from "crypto"; 
 
 dotenv.config();
 
 const groqKey = process.env.GROQ_API_KEY;
 console.log("\n🔑 --- DIAGNÓSTICO DE CHAVES ---");
 if (!groqKey) {
-    console.error("❌ ERRO: A variável GROQ_API_KEY não existe no .env!");
+  console.error("❌ ERRO: A variável GROQ_API_KEY não existe no .env!");
 } else {
-    console.log(`✅ Chave Groq detectada. Tamanho: ${groqKey.length} caracteres.`);
+  console.log(`✅ Chave Groq detectada. Tamanho: ${groqKey.length} caracteres.`);
 }
 console.log("----------------------------------\n");
 
@@ -24,11 +24,14 @@ app.use(express.json({ limit: "50mb" }));
 app.use(cors());
 const port = 3000;
 
+// 🧠 MEMÓRIA DE TOTEM (Cache em RAM)
+const audioCache = new Map();
+
 app.post("/sts", async (req, res) => {
   const requestId = Date.now();
   console.log(`\n=== [${requestId}] Nova requisição /sts ===`);
   console.time(`🕒 Tempo Total ${requestId}`);
-
+  
   try {
     // ---------------------------------------------------------
     // 0. RECEBIMENTO DO ÁUDIO
@@ -45,23 +48,40 @@ app.post("/sts", async (req, res) => {
     const userMessage = await convertAudioToText({ audioData });
     console.log(`🗣️ Usuário disse: "${userMessage}"`);
 
+    // Se não entendeu nada, retorna vazio
     if (!userMessage || userMessage.trim().length === 0) {
       console.warn("⚠️ [Server] Áudio inaudível ou silêncio.");
       return res.send({ messages: [] });
     }
 
     // ---------------------------------------------------------
-    // 2. CÉREBRO (Pensamento)
+    // ⚡ CACHE CHECK (A Otimização de Velocidade)
+    // ---------------------------------------------------------
+    // Cria uma chave única (ex: "que horas abre" == "que horas abre?")
+    const cacheKey = userMessage.toLowerCase().trim()
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, ""); // Remove acentos
+
+    if (audioCache.has(cacheKey)) {
+      console.log(`⚡ CACHE HIT! Respondendo instantaneamente para: "${userMessage}"`);
+      const cachedData = audioCache.get(cacheKey);
+      
+      res.send({ messages: cachedData });
+      
+      console.timeEnd(`🕒 Tempo Total ${requestId}`);
+      return; // <--- ENCERRA AQUI SE ACHAR NO CACHE
+    }
+
+    // ---------------------------------------------------------
+    // 2. CÉREBRO (Se não estava no cache, pensa...)
     // ---------------------------------------------------------
     let openAImessages;
     try {
       openAImessages = await openAIChain.invoke({ question: userMessage });
     } catch (error) {
       console.error("❌ Erro na IA:", error.message);
-      // Fallback simples caso a IA falhe
       openAImessages = { 
           messages: [{ 
-              text: "Desculpe, tive um problema técnico.", 
+              text: "Desculpe, mano, deu um erro aqui.", 
               animation: "SadIdle", 
               facialExpression: "sad" 
           }] 
@@ -69,41 +89,40 @@ app.post("/sts", async (req, res) => {
     }
 
     // ---------------------------------------------------------
-    // 3. OTIMIZAÇÃO (Juntar Tudo em 1) - O SEGREDO ESTÁ AQUI 🚀
+    // 3. GERAÇÃO DE ÁUDIO UNIFICADO
     // ---------------------------------------------------------
     console.time("🕒 Kokoro & LipSync ÚNICO");
 
-    // A. Junta todas as frases em um único texto corrido
+    // A. Junta tudo num texto só
     const fullText = openAImessages.messages
       .map((msg) => msg.text)
-      .join(" "); // Adiciona espaço entre as frases
+      .join(" ");
 
-    // B. Pega a animação da primeira mensagem (para não ficar trocando loucamente)
+    // B. Pega animação da primeira mensagem
     const mainAnimation = openAImessages.messages[0]?.animation || "TalkingOne";
     const mainExpression = openAImessages.messages[0]?.facialExpression || "default";
 
-    console.log(`🗣️ Gerando Áudio UNIFICADO: "${fullText.substring(0, 50)}..."`);
+    console.log(`🗣️ Gerando Novo Áudio: "${fullText.substring(0, 40)}..."`);
 
-    // C. Gera UM arquivo de áudio apenas (Kokoro)
-    // Nota: Estou assumindo que você importou 'kokoro' no topo do arquivo
-    const fileName = `message_${requestId}.wav`;
-    // Ajuste o caminho conforme sua pasta de audios
+    // C. Gera arquivos com nome baseado no conteúdo (hash) para não sobrescrever
+    // Usamos um Hash MD5 da pergunta para o nome do arquivo, ajuda no debug
+    const fileHash = crypto.createHash('md5').update(cacheKey).digest('hex');
+    const fileName = `speech_${fileHash}.wav`;
+    
+    // Gera áudio (Kokoro)
     const audioPath = await kokoro.generate(fullText, `audios/${fileName}`);
 
-    // D. Gera UM arquivo de visemas apenas (Rhubarb/LipSync)
-    // Nota: Estou assumindo que você importou 'lipSync' no topo
-    const lipSyncPath = await lipSync.generate(audioPath); // Ou rhubarb.generate(audioPath)
+    // Gera boca (Rhubarb)
+    const lipSyncPath = await lipSync.generate(audioPath);
 
     console.timeEnd("🕒 Kokoro & LipSync ÚNICO");
 
     // ---------------------------------------------------------
-    // 4. PREPARAR RESPOSTA
+    // 4. LEITURA E ENVIO
     // ---------------------------------------------------------
-    // Lê os arquivos gerados para enviar ao frontend
     const audioBuffer = await fs.promises.readFile(audioPath);
     const lipSyncContent = JSON.parse(await fs.promises.readFile(lipSyncPath, "utf-8"));
 
-    // Monta um array com 1 único item (Áudio longo + LipSync longo)
     const finalResponse = [
       {
         text: fullText,
@@ -114,7 +133,11 @@ app.post("/sts", async (req, res) => {
       },
     ];
 
-    console.log("✅ [Server] Enviando resposta unificada.");
+    // 💾 SALVA NO CACHE (Para a próxima vez ser rápido)
+    audioCache.set(cacheKey, finalResponse);
+    console.log(`💾 Guardado na memória: "${cacheKey}"`);
+
+    console.log("✅ [Server] Enviando resposta nova.");
     res.send({ messages: finalResponse });
     
     console.timeEnd(`🕒 Tempo Total ${requestId}`);
@@ -128,8 +151,7 @@ app.post("/sts", async (req, res) => {
 });
 
 app.get("/voices", async (req, res) => res.send([]));
-app.post("/tts", async (req, res) => { /* Mantido */ });
 
 app.listen(port, () => {
-  console.log(`🚀 Jack está ouvindo na porta ${port}`);
+  console.log(`🚀 Jack (Versão Totem Cache) ouvindo na porta ${port}`);
 });
