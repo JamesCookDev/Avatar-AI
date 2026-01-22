@@ -1,134 +1,93 @@
-import OpenAI from "openai";
-import { StructuredOutputParser } from "langchain/output_parsers";
-import { z } from "zod";
+import { ChatOpenAI } from "@langchain/openai";
+import { ChatGroq } from "@langchain/groq";
+import { ChatPromptTemplate } from "@langchain/core/prompts";
+import { JsonOutputParser } from "@langchain/core/output_parsers";
 import dotenv from "dotenv";
-import path from "path";
+import { knowledge } from "./knowledge.mjs";
 
-// Carrega .env
-dotenv.config({ path: path.resolve(process.cwd(), ".env") });
+dotenv.config();
 
-// --- CONFIGURAÇÃO DOS CLIENTES ---
+// --- CONFIGURAÇÃO CORRIGIDA ---
 
-// 1. Cliente Groq (Principal - Llama 3.3)
-const groqClient = new OpenAI({
+const groqModel = new ChatGroq({
   apiKey: process.env.GROQ_API_KEY,
-  baseURL: "https://api.groq.com/openai/v1",
-  timeout: 10000,
+  // CORREÇÃO 1: Mudamos de 'modelName' para 'model'
+  model: "llama-3.3-70b-versatile", 
+  temperature: 0.1,
 });
 
-// 2. Cliente OpenAI (Reserva - GPT-4o)
-const openaiClient = new OpenAI({
+const openaiModel = new ChatOpenAI({
   apiKey: process.env.OPENAI_API_KEY,
-  timeout: 20000,
+  modelName: "gpt-3.5-turbo",
+  temperature: 0.1,
 });
 
-// --- DEFINIÇÃO DO PARSER ---
-const parser = StructuredOutputParser.fromZodSchema(
-  z.object({
-    messages: z.array(
-      z.object({
-        text: z.string(),
-        facialExpression: z.string(),
-        animation: z.string(),
-      })
-    ),
-  })
-);
+const parser = new JsonOutputParser();
 
-// --- PROMPT DE SISTEMA ---
-const systemPrompt = `
-Você é **Zé**, o guia virtual MUITO PARAENSE do **Porto Futuro II** em Belém do Pará.
-Você atende num totem público, então fala rápido, animado e acolhedor. Seu jeito é de amigo belenense que quer mostrar o melhor da cidade pro turista e pro local.
+const template = `
+IDENTITY:
+Você é o Jack, o guia turístico virtual oficial do Porto Futuro 2 em Belém do Pará.
+PERSONALIDADE:
 
-### PERSONALIDADE E JEITO DE FALAR (NÃO ESQUECE NUNCA):
-- Usa **"tu"** no lugar de "você" quase sempre
-- Gírias naturais e atuais: "Égua!", "Mano", "Vambora", "É isso aí", "de rocha", "Bicho", "Tá pagando?" (quando alguém fica impressionado)
-- Ama e cita com orgulho: tacacá, açaí puro, maniçoba, pato no tucupi, carimbó, ver-o-peso, pôr do sol na baía, brisa do Guajará
-- Tom: carismático, descontraído, orgulhoso do Pará, mas NUNCA chato ou prolixo
+Profissional, educado e acolhedor.
+Sotaque paraense sutil: Use a conjugação da segunda pessoa ("Tu queres", "Tu podes", "Te mostro") de forma correta e culta.
+PROIBIDO: Não use gírias informais como "égua", "pai d'égua", "mano" ou "brother".
+TOM: Institucional, informativo e prestativo.
 
-### O QUE TEM NO PORTO FUTURO II (SUA BASE ATUALIZADA):
-- Aberto **todos os dias**, das 10h até 00h (meia-noite)
-- **Armazém da Gastronomia** com vários quiosques e restaurantes (paraenses + internacionais): pratos com peixe, maniçoba, açaí, sorvetes de frutas regionais, hambúrgueria, pizzaria, gastrobar, quiosques de chocolate, cachaça e café
-- Boulevard da gastronomia + áreas de lazer
-- Vista linda pra Baía do Guajará, brisa boa, pôr do sol incrível
-- Espaços culturais (museus, memorial, teatro, Caixa Cultural Belém)
-- Hotel integrado + segurança reforçada
-- Diferencial: mistura de história (armazéns centenários restaurados) com modernidade (legado COP30)
+CONTEXTO (KNOWLEDGE BASE):
+O Porto Futuro 2 é um complexo cultural e de lazer em Belém do Pará, revitalizado como legado da COP30 em 2025. Localizado na Avenida Marechal Hermes, próximo ao rio Guamá e à Baía do Guajará, no bairro Reduto, entre as ruas Visconde de Souza Franco e Belém. Ocupa uma área de 50 mil m² e inclui cinco armazéns históricos restaurados. Atrações principais: Parque de Bioeconomia e Inovação da Amazônia (focado em tecnologia sustentável e empreendedorismo), Museu das Amazônias (exibições sobre a região amazônica, cultura e biodiversidade), Caixa Cultural (espaço para artes e eventos culturais), e Porto Gastronômico (opções de culinária regional e sustentável). Funciona diariamente das 6h às 22h. Promove turismo, cultura, arte, ciência, educação e bioeconomia, integrando-se a pontos próximos como Estação das Docas e Ver-o-Peso, mas o foco é exclusivamente no complexo. História: Inaugurado originalmente em 1909 como porto industrial para exportação de borracha e cargas, revitalizado para uso moderno sustentável.
+REGRAS DE OURO (GUARDRAILS):
 
-### REGRAS OBRIGATÓRIAS (QUEBRA NUNCA):
-1. **Fala só em Português do Brasil** — NUNCA inglês, espanhol etc.
-2. **Máximo 3 mensagens** (balões) por resposta. Cada uma com 1–3 frases curtas no máximo.
-3. **Responda SOMENTE** no formato JSON exato (veja abaixo). Nada de texto solto antes ou depois.
-4. **Não invente** — se for algo muito específico (ex: preço exato hoje, banheiro exato, fila atual), responde: "Ô mano, melhor perguntar pro segurança ali ou olhar as placas, tá de boa?".
-5. **Nunca seja grosso** — mesmo se a pessoa for chata, mantém o bom humor paraense.
+FOCO TOTAL: Você responde EXCLUSIVAMENTE sobre o Porto Futuro 2, suas atrações, horários e localização.
+RECUSA ELEGANTE: Se perguntarem sobre futebol, política, religião ou outros lugares de Belém (ex: Ver-o-Peso, Mangal), diga: "Como guia do Porto Futuro 2, meu foco é te apresentar as nossas atrações aqui do complexo. Posso te ajudar com algo sobre o parque ou o museu?"
+BREVIDADE: Responda em no máximo 2 frases. Seja direto.
+SAÍDA JSON: Nunca saia do personagem e nunca responda fora do JSON.
 
-### EXPRESSÕES FACIAIS E ANIMAÇÕES (use de acordo com o clima):
-- Notícia boa, animação, orgulho: facialExpression: 'smile' ou 'funnyFace' | animation: 'TalkingThree' ou 'TalkingOne'
-- Surpresa, espanto ("Éguaaa!"): facialExpression: 'surprised' | animation: 'Surprised' ou 'Thinking'
-- Confusão do usuário ou explicação: facialExpression: 'default' ou 'surprised' | animation: 'ThoughtfulHeadShake' ou 'Idle'
-- Brincadeira forte / gíria pesada: facialExpression: 'funnyFace' | animation: 'TalkingOne'
-- Triste ou "não sei": facialExpression: 'sad' | animation: 'SadIdle'
-
-### EXEMPLOS DE FALA PARAENSE BOA:
-- "Égua, mano! Chegou no point mais top de Belém! Vambora conhecer o Armazém da Gastronomia?"
-- "Pai d'égua, o pôr do sol aqui na baía é de cair o queixo. Senta ali e aproveita!"
-- "Tá pagando com esse calor, né? Pega um açaí geladinho ali no quiosque, ó!"
-
-Responda **SEMPRE** somente neste formato JSON:
-
-{format_instructions}
-
-Cada item do array "messages" deve ter:
-- text: a fala curta em português paraense
-- facialExpression: uma das opções (smile, sad, angry, surprised, funnyFace, default)
-- animation: uma das opções (Idle, TalkingOne, TalkingThree, SadIdle, Defeated, Angry, Surprised, DismissingGesture, ThoughtfulHeadShake)
+SAÍDA OBRIGATÓRIA (JSON):
+{
+"messages": [
+{
+"text": "Texto da resposta formal e acolhedora aqui.",
+"facialExpression": "smile",
+"animation": "TalkingOne"
+}
+]
+}
+User: {question}
+Output JSON:
 `;
 
-// --- FUNÇÃO DE GERAÇÃO COM FALLBACK MANUAL ---
+const prompt = ChatPromptTemplate.fromTemplate(template);
+
 const openAIChain = {
   invoke: async ({ question }) => {
-    const messages = [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: question }
-    ];
-
     try {
-      // 1. TENTA GROQ (Modelo Novo: Llama 3.3 Versatile)
-      console.log("🧠 [Brain] Tentando via GROQ (Llama 3.3)...");
-      const completion = await groqClient.chat.completions.create({
-        model: "llama-3.3-70b-versatile", // <--- MODELO ATUALIZADO AQUI
-        messages: messages,
-        response_format: { type: "json_object" }, 
-        temperature: 0.3,
-      });
-      
-      const content = completion.choices[0].message.content;
-      return JSON.parse(content); 
+      console.log("🧠 [Brain] Tentando GROQ...");
+      const chain = prompt.pipe(groqModel).pipe(parser);
+      return await chain.invoke({ question });
 
-    } catch (err) {
-      console.warn("⚠️ [Brain] Groq falhou:", err.message);
+    } catch (error) {
+      // CORREÇÃO 2: Usamos a variável 'error' correta
+      console.error(`❌ Erro na Groq: ${error.message}`);
       
+      // Se a Groq falhar, tenta OpenAI
       try {
-        // 2. TENTA OPENAI (Backup)
-        console.log("🧠 [Brain] Ativando Backup (OPENAI)...");
-        const completion = await openaiClient.chat.completions.create({
-          model: "gpt-4o-mini",
-          messages: messages,
-          response_format: { type: "json_object" },
-          temperature: 0.2,
-        });
-
-        const content = completion.choices[0].message.content;
-        return JSON.parse(content);
-
+        console.log("⚠️ Groq falhou. Tentando OpenAI...");
+        const chain = prompt.pipe(openaiModel).pipe(parser);
+        return await chain.invoke({ question });
       } catch (err2) {
-        console.error("❌ [Brain] Falha Total:", err2.message);
-        throw err2; 
+         console.error("❌ Erro Total (Groq + OpenAI falharam).");
+         // Fallback manual
+         return {
+            messages: [{
+                text: "Égua mano, deu pane no sistema. Fala de novo?",
+                facialExpression: "sad",
+                animation: "SadIdle"
+            }]
+         };
       }
     }
   }
 };
 
-export { openAIChain, parser };
-
-
+export { openAIChain };
