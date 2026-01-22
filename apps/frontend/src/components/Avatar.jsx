@@ -4,155 +4,173 @@ import React, { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { useSpeech } from "../hooks/useSpeech";
 
-// Correção: 'viseme_aa' estava minúsculo, o padrão ARKit é 'viseme_AA'
+// 1. MAPEAMENTO EXATO (Baseado no SEU log do console)
+// Rhubarb Phoneme -> Nome da Morph Target no seu GLB
 const visemeMap = {
-  A: "viseme_PP",
-  B: "viseme_kk",
-  C: "viseme_I",
-  D: "viseme_AA", // Corrigido para maiúsculo
-  E: "viseme_O",
-  F: "viseme_U",
-  G: "viseme_FF",
-  H: "viseme_TH",
-  X: "viseme_PP",
+  A: "viseme_PP",  // Boca fechada (M, B, P)
+  B: "viseme_kk",  // Consoantes médias (K, S, T)
+  C: "viseme_I",   // Vogais esticadas (Eh, Ih)
+  D: "viseme_aa",  // Boca bem aberta (Ah)
+  E: "viseme_O",   // Boca redonda (Oh)
+  F: "viseme_U",   // Bico (Uh, W)
+  G: "viseme_FF",  // Dentes no lábio (F, V)
+  H: "viseme_TH",  // Língua (L, Th)
+  X: "viseme_sil", // Silêncio (Pausa)
 };
 
 export function Avatar(props) {
-  // 1. CARREGA O MODELO (CORPO)
   const { scene } = useGLTF("/models/avatar.glb");
-
-  // 2. CARREGA AS ANIMAÇÕES (MOVIMENTOS)
   const { animations: animationClips } = useGLTF("/models/animations.glb");
-
   const { message, onMessagePlayed } = useSpeech();
 
-  // Refs e Estados
   const group = useRef();
   const { actions } = useAnimations(animationClips, group);
-  const [lipsync, setLipsync] = useState();
-  const [audio, setAudio] = useState(null);
-  const headMeshRef = useRef(null);
-
-  // --- TRUQUE AVANÇADO: REF PARA O CALLBACK ---
-  // Isso impede que o áudio reinicie quando o 'onMessagePlayed' muda (ex: ao falar no mic)
-  const onMessagePlayedRef = useRef(onMessagePlayed);
   
-  // Atualiza a ref sempre que a função mudar, mas sem disparar o useEffect do áudio
+  // MUDANÇA CRÍTICA: Usamos Ref para o áudio, não State.
+  // Isso remove o delay de renderização do React.
+  const audioRef = useRef(null); 
+  const [lipsync, setLipsync] = useState(null);
+  
+  const morphMeshesRef = useRef([]); 
+  const onMessagePlayedRef = useRef(onMessagePlayed);
+
   useEffect(() => {
     onMessagePlayedRef.current = onMessagePlayed;
   }, [onMessagePlayed]);
 
-  // --- Lógica de Animação de Corpo ---
+  // --- ANIMAÇÃO DE CORPO ---
   useEffect(() => {
     if (!actions) return;
-
     const currentAnimation = message ? (message.animation || "TalkingOne") : "Idle";
-
-    // Suavização da troca de animação
+    
     if (actions[currentAnimation]) {
       actions[currentAnimation].reset().fadeIn(0.5).play();
       return () => {
         actions[currentAnimation]?.fadeOut(0.5);
       };
     }
-  }, [message, actions]); // Depende apenas da mensagem
+  }, [message, actions]);
 
-  // --- Lógica de Auto-Detecção da Cabeça ---
+  // --- DETECTOR DE PEÇAS ---
   useEffect(() => {
     if (!scene) return;
+    morphMeshesRef.current = [];
+    
     scene.traverse((child) => {
-      if (child.isMesh) {
+      if (child.isMesh && child.morphTargetDictionary) {
+        morphMeshesRef.current.push(child);
         child.castShadow = true;
         child.receiveShadow = true;
-        if (child.morphTargetDictionary && (child.name.includes("Head") || child.name.includes("Avatar"))) {
-          headMeshRef.current = child;
-        }
       }
     });
   }, [scene]);
 
-  // --- LÓGICA DE ÁUDIO BLINDADA ---
+  // --- PLAYER DE ÁUDIO (SEM LAG) ---
   useEffect(() => {
-    // Se não tem mensagem, limpa o áudio e sai
     if (!message) {
-      setAudio(null);
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
       return;
     }
 
+    // 1. Prepara os dados
     setLipsync(message.lipsync);
     
-    // Cria o áudio
+    // 2. Cria o áudio e salva na REF imediatamente
     const newAudio = new Audio("data:audio/mp3;base64," + message.audio);
+    audioRef.current = newAudio;
     
-    // Configura o evento de fim
     newAudio.onended = () => {
-      // Chama a versão mais recente da função através da Ref
-      if (onMessagePlayedRef.current) {
-        onMessagePlayedRef.current();
-      }
+      if (onMessagePlayedRef.current) onMessagePlayedRef.current();
     };
     
-    // Toca o áudio
+    // 3. Toca
     newAudio.play().catch(e => console.error("Erro playback:", e));
-    setAudio(newAudio);
 
-    // CLEANUP
-    // Só roda se a 'message' mudar (não roda se você falar no microfone)
+    // 4. Limpeza instantânea ao trocar de mensagem
     return () => {
       newAudio.pause();
       newAudio.currentTime = 0;
     };
-    
-  // ⚠️ ATENÇÃO: Removemos 'onMessagePlayed' daqui. 
-  // Agora o efeito só roda estritamente quando a mensagem muda.
-  }, [message]); 
+  }, [message]);
 
-  // --- Loop de Visemas (LipSync Real) ---
+  // --- LIPSYNC LOOP (60 FPS) ---
   useFrame(() => {
-    // Se não estiver tocando ou não tiver configuração, fecha a boca
-    if (!headMeshRef.current || !lipsync || !audio || audio.paused) {
-      if (headMeshRef.current && headMeshRef.current.morphTargetInfluences) {
-        const dict = headMeshRef.current.morphTargetDictionary;
-        Object.values(visemeMap).forEach((viseme) => {
-           const index = dict[viseme];
-           if (index !== undefined) {
-             headMeshRef.current.morphTargetInfluences[index] = THREE.MathUtils.lerp(
-               headMeshRef.current.morphTargetInfluences[index],
-               0,
-               0.15 // Fechamento um pouco mais rápido
-             );
-           }
-        });
-      }
+    // Se não tem peças, áudio ou dados de boca, sai e fecha a boca
+    if (morphMeshesRef.current.length === 0 || !lipsync || !audioRef.current) {
+      // Fecha a boca suavemente
+      morphMeshesRef.current.forEach((mesh) => {
+        if (mesh.morphTargetInfluences && mesh.morphTargetDictionary) {
+             const keys = Object.keys(visemeMap);
+             keys.forEach(key => {
+                 const targetName = visemeMap[key];
+                 const index = mesh.morphTargetDictionary[targetName];
+                 if (index !== undefined) {
+                     mesh.morphTargetInfluences[index] = THREE.MathUtils.lerp(
+                         mesh.morphTargetInfluences[index], 0, 0.1
+                     );
+                 }
+             });
+        }
+      });
       return;
     }
 
-    const currentAudioTime = audio.currentTime;
+    // O PULO DO GATO: Lendo direto da Ref (Sem Lag)
+    const currentAudioTime = audioRef.current.currentTime;
     
-    // Encontra o visema atual
+    // Se o áudio pausou ou acabou, força fechamento
+    if (audioRef.current.paused || audioRef.current.ended) {
+        // (Mesma lógica de fechar boca acima)
+        return; 
+    }
+
+    // 1. Encontra o fonema para o segundo exato
     const currentCue = lipsync.mouthCues.find((cue) => {
       return currentAudioTime >= cue.start && currentAudioTime <= cue.end;
     });
 
-    if (headMeshRef.current.morphTargetDictionary) {
-      // Define qual deve estar aberta
-      const targetName = currentCue ? (visemeMap[currentCue.value] || "viseme_PP") : null;
-      const targetIndex = targetName ? headMeshRef.current.morphTargetDictionary[targetName] : null;
+    // Se achou, pega o nome da chave (ex: viseme_aa). Se não, usa X (silêncio)
+    const targetViseme = currentCue ? visemeMap[currentCue.value] : visemeMap["X"];
 
-      Object.values(visemeMap).forEach((v) => {
-         const idx = headMeshRef.current.morphTargetDictionary[v];
-         if (idx !== undefined) {
-           // Se for a boca alvo, abre (valor 1). Se não, fecha (valor 0).
-           const targetValue = (idx === targetIndex) ? 1 : 0;
-           
-           headMeshRef.current.morphTargetInfluences[idx] = THREE.MathUtils.lerp(
-             headMeshRef.current.morphTargetInfluences[idx],
-             targetValue,
-             0.4 // Velocidade da fala
-           );
-         }
-      });
-    }
+    // 2. Aplica na malha
+    morphMeshesRef.current.forEach((mesh) => {
+        if (!mesh.morphTargetDictionary || !mesh.morphTargetInfluences) return;
+
+        const targetIndex = mesh.morphTargetDictionary[targetViseme];
+
+        // Se a malha (ex: Dente) não tem 'viseme_aa', tenta 'mouthOpen'
+        // Isso resolve o problema do dente atravessando
+        let finalIndex = targetIndex;
+        if (finalIndex === undefined && targetViseme !== visemeMap["X"]) {
+            finalIndex = mesh.morphTargetDictionary["mouthOpen"];
+        }
+
+        if (finalIndex !== undefined) {
+            // APLICAÇÃO DO MOVIMENTO
+            
+            // 1. Zera todas as outras bocas (para não misturar)
+            Object.values(visemeMap).forEach((vName) => {
+                const idx = mesh.morphTargetDictionary[vName];
+                if (idx !== undefined && idx !== finalIndex) {
+                    mesh.morphTargetInfluences[idx] = THREE.MathUtils.lerp(
+                        mesh.morphTargetInfluences[idx],
+                        0,
+                        0.4 // Velocidade de fechamento
+                    );
+                }
+            });
+
+            // 2. Abre a boca certa
+            mesh.morphTargetInfluences[finalIndex] = THREE.MathUtils.lerp(
+                mesh.morphTargetInfluences[finalIndex],
+                1,
+                0.4 // Velocidade de abertura
+            );
+        }
+    });
   });
 
   return (
