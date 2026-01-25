@@ -13,7 +13,7 @@ function App() {
       <Leva collapsed hidden /> 
       
       {/* Interface de Chat (opcional, pode remover se quiser tela limpa na apresentação) */}      
-      <Canvas shadows camera={{ position: [0, 0, 0], fov: 10 }}>
+      <Canvas shadows camera={{ position: [0, 0, 0], fov: 26 }}>
         <Scenario />
       </Canvas>
     </>

@@ -2,7 +2,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
 import fs from "fs";
-import { openAIChain } from "./modules/openAI.mjs"; o
+import { openAIChain } from "./modules/openAI.mjs"; 
 import { lipSync } from "./modules/rhubarbLipSync.mjs";
 import { convertAudioToText } from "./modules/whisper.mjs";
 import kokoro from "./modules/kokoro.mjs"; 
@@ -21,7 +21,10 @@ console.log("----------------------------------\n");
 
 const app = express();
 app.use(express.json({ limit: "50mb" })); 
-app.use(cors());
+app.use(cors({
+  origin: "*", 
+  methods: ["GET", "POST"],
+}));
 const port = 3000;
 
 // 🧠 MEMÓRIA DE TOTEM (Cache em RAM)
