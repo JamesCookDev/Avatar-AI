@@ -6,7 +6,6 @@ import dotenv from "dotenv";
 
 dotenv.config({ path: path.resolve(process.cwd(), ".env") });
 
-<<<<<<< HEAD
 async function convertAudioToText({ audioData }) {
   const mp3AudioData = await convertAudioToMp3({ audioData });
   const outputPath = "/tmp/output.mp3";
@@ -22,41 +21,6 @@ async function convertAudioToText({ audioData }) {
   const transcribedText = doc.pageContent;
   fs.unlinkSync(outputPath);
   return transcribedText;
-=======
-// --- CONFIGURAÇÃO (Mantive sua lógica de Fallback) ---
-const groqKey = process.env.GROQ_API_KEY;
-const openaiKey = process.env.OPENAI_API_KEY;
-
-const groqClient = groqKey
-  ? new OpenAI({
-      apiKey: groqKey,
-      baseURL: "https://api.groq.com/openai/v1",
-      timeout: 20000,
-    })
-  : null;
-
-const openaiClient = openaiKey
-  ? new OpenAI({
-      apiKey: openaiKey,
-      timeout: 30000,
-    })
-  : null;
-
-// --- FUNÇÃO DE ENVIO SEGURO (MEMÓRIA) ---
-async function transcribe(client, bufferData, modelName) {
-  // Converte o Buffer cru para um Objeto de Arquivo que a OpenAI aceita
-  // Isso evita ler do disco durante a requisição de rede
-  const file = await toFile(bufferData, "input.wav", {
-    type: "audio/wav",
-  });
-
-  return await client.audio.transcriptions.create({
-    file: file,
-    model: modelName,
-    language: "pt",
-    response_format: "json",
-  });
->>>>>>> test/lipsynq
 }
 
 // --- FLUXO PRINCIPAL ---
