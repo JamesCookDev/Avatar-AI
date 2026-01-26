@@ -7,7 +7,7 @@ O Porto Futuro 2 é um complexo turístico, cultural e de lazer às margens da B
 - Entrada principal pela Avenida Visconde de Souza Franco (Doca).
 
 # HORÁRIOS
-- Terça a Domingo: 10horas às 22horas.
+- Terça a Domingo: 10 horas às 22 horas.
 - Segunda-feira: Fechado para manutenção.
 - Entrada: Gratuita.
 
