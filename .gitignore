@@ -35,4 +35,10 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+<<<<<<< HEAD
 yarn.lock
+=======
+
+./apps/backend/audios/*.wav
+./apps/backend/audios/*.mp3
+>>>>>>> test/lipsynq

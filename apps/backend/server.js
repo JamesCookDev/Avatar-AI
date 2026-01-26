@@ -1,22 +1,21 @@
 import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
-import { openAIChain, parser } from "./modules/openAI.mjs";
-import { lipSync } from "./modules/lip-sync.mjs";
-import { sendDefaultMessages, defaultResponse } from "./modules/defaultMessages.mjs";
+import fs from "fs";
+import { openAIChain } from "./modules/openAI.mjs"; 
+import { lipSync } from "./modules/rhubarbLipSync.mjs";
 import { convertAudioToText } from "./modules/whisper.mjs";
-import multer from "multer";
-
 
 dotenv.config();
 
-const upload = multer({ storage: multer.memoryStorage() });
 const elevenLabsApiKey = process.env.ELEVEN_LABS_API_KEY;
-const openAIApiKey = process.env.OPENAI_API_KEY;
 
 const app = express();
-app.use(express.json());
-app.use(cors());
+app.use(express.json({ limit: "50mb" })); 
+app.use(cors({
+  origin: "*", 
+  methods: ["GET", "POST"],
+}));
 const port = 3000;
 
 app.get("/voices", async (req, res) => {
@@ -30,37 +29,7 @@ app.post("/tts", async (req, res) => {
     res.send({ messages: defaultMessages });
     return;
   }
-const openAIApiKey = process.env.OPENAI_API_KEY;
-
-if (!openAIApiKey) {
-  const local = {
-    messages: [
-      {
-        text: req.body.message,
-        facialExpression: "smile",
-        animation: "TalkingOne",
-      },
-    ],
-  };
-  const withLip = await lipSync({ messages: local.messages });
-  res.send({ messages: withLip });
-  return;
-}
   let openAImessages;
-  if (!openAIApiKey) {
-  const local = {
-    messages: [
-      {
-        text: userMessage,
-        facialExpression: "smile",
-        animation: "TalkingOne",
-      },
-    ],
-  };
-  const withLip = await lipSync({ messages: local.messages });
-  res.send({ messages: withLip });
-  return;
-}
   try {
     openAImessages = await openAIChain.invoke({
       question: userMessage,
@@ -74,7 +43,6 @@ if (!openAIApiKey) {
 });
 
 app.post("/sts", async (req, res) => {
-  console.log("STS hit: bytes(base64) =", (req.body.audio || "").length);
   const base64Audio = req.body.audio;
   const audioData = Buffer.from(base64Audio, "base64");
   const userMessage = await convertAudioToText({ audioData });
@@ -92,24 +60,5 @@ app.post("/sts", async (req, res) => {
 });
 
 app.listen(port, () => {
-  console.log(`Jack are listening on port ${port}`);
-});
-
-app.post("/whisper", upload.single("audio_file"), async (req, res) => {
-  try {
-    if (!req.file?.buffer) {
-      return res.status(400).json({ error: "audio_file ausente" });
-    }
-    const text = await convertAudioToText({ audioData: req.file.buffer });
-    return res.json({ text });
-  } catch (e) {
-    console.error("Whisper /whisper error:", e);
-    return res.status(500).json({ error: "whisper_failed" });
-  }
-});
-
-app.post("/chat", async (req, res) => {
-  // reaproveita exatamente a mesma lógica do /tts
-  req.url = "/tts";
-  return app._router.handle(req, res);
+  console.log(`🚀 Jack (Versão Totem Cache) ouvindo na porta ${port}`);
 });

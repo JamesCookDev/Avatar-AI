@@ -1,11 +1,13 @@
 import { ChatOpenAI } from "@langchain/openai";
+import { ChatGroq } from "@langchain/groq";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
-import { StructuredOutputParser } from "langchain/output_parsers";
-import { z } from "zod";
+import { JsonOutputParser } from "@langchain/core/output_parsers";
 import dotenv from "dotenv";
+import { knowledge } from "./knowledge.mjs";
 
 dotenv.config();
 
+<<<<<<< HEAD
 const template = `
   Você é Jack, o guia virtual oficial do Porto Futuro 2 em Belém do Pará.
 Você é um assistente em um totem público. Seu objetivo é ajudar turistas e locais de forma rápida, carismática e MUITO PARAENSE.
@@ -74,7 +76,101 @@ const parser = StructuredOutputParser.fromZodSchema(
     ),
   })
 );
+=======
+// --- CONFIGURAÇÃO DOS MODELOS ---
 
-const openAIChain = prompt.pipe(model).pipe(parser);
+const groqModel = new ChatGroq({
+  apiKey: process.env.GROQ_API_KEY,
+  model: "llama-3.3-70b-versatile",
+  temperature: 0.1,
+});
 
-export { openAIChain, parser };
+const openaiModel = new ChatOpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+  modelName: "gpt-3.5-turbo",
+  temperature: 0.1,
+});
+>>>>>>> test/lipsynq
+
+const parser = new JsonOutputParser();
+
+// --- TEMPLATE BLINDADO ---
+// Note que usamos {{ e }} para o JSON de exemplo. Isso diz pro LangChain: "Isso é texto, não variável".
+// E usamos {context} para inserir o conhecimento de forma segura.
+
+const template = `
+IDENTITY:
+Você é o Jack, o guia turístico virtual oficial do Porto Futuro 2 em Belém do Pará.
+PERSONALIDADE:
+- Profissional, educado e acolhedor.
+- Sotaque paraense sutil: Use a conjugação da segunda pessoa ("Tu queres", "Tu podes", "Te mostro") de forma correta e culta.
+- PROIBIDO: Não use gírias informais como "égua", "pai d'égua", "mano" ou "brother".
+- TOM: Institucional, informativo e prestativo.
+
+CONTEXTO (KNOWLEDGE BASE):
+{context}
+
+REGRAS DE OURO (GUARDRAILS):
+1. FOCO TOTAL: Você responde EXCLUSIVAMENTE sobre o Porto Futuro 2, suas atrações, horários e localização.
+2. RECUSA ELEGANTE: Se perguntarem sobre futebol, política, religião ou outros lugares, diga que seu foco é apresentar o complexo do Porto Futuro 2.
+3. BREVIDADE: Responda em no máximo 2 frases.
+4. SAÍDA JSON: Nunca saia do personagem e nunca responda fora do JSON.
+
+SAÍDA OBRIGATÓRIA (JSON):
+{{
+  "messages": [
+    {{
+      "text": "Texto da resposta formal e acolhedora aqui.",
+      "facialExpression": "smile",
+      "animation": "TalkingOne"
+    }}
+  ]
+}}
+
+User: {question}
+Output JSON:
+`;
+
+const prompt = ChatPromptTemplate.fromTemplate(template);
+
+// --- CÉREBRO ---
+
+const openAIChain = {
+  invoke: async ({ question }) => {
+    try {
+      // Tenta GROQ
+      const chain = prompt.pipe(groqModel).pipe(parser);
+      
+      // AQUI ESTÁ A CORREÇÃO DE SEGURANÇA:
+      // Passamos o knowledge como 'context' aqui, não no template string
+      return await chain.invoke({ 
+        question: question,
+        context: knowledge 
+      });
+
+    } catch (error) {
+      console.error(`❌ Erro na Groq: ${error.message}`);
+      
+      try {
+        // Tenta OpenAI (Backup)
+        const chain = prompt.pipe(openaiModel).pipe(parser);
+        return await chain.invoke({ 
+            question: question,
+            context: knowledge 
+        });
+
+      } catch (err2) {
+         console.error("❌ Falha Total (Groq + OpenAI).");
+         return {
+            messages: [{
+                text: "Peço desculpas, tive uma falha técnica momentânea. Poderia repetir, por favor?",
+                facialExpression: "sad",
+                animation: "SadIdle"
+            }]
+         };
+      }
+    }
+  }
+};
+
+export { openAIChain };
