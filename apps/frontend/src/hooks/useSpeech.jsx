@@ -4,7 +4,7 @@ const SpeechContext = createContext();
 
 // 1. Pega a URL do .env (Profissional)
 // Se não tiver .env, usa localhost como fallback
-const API_URL = import.meta.env.VITE_API_URL || "http://192.168.0.102:3000";
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
 export const useSpeech = () => {
   const context = useContext(SpeechContext);

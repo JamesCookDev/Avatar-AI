@@ -2,159 +2,177 @@ import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
 import fs from "fs";
-import { openAIChain } from "./modules/openAI.mjs"; 
+import path from "path";
+import crypto from "crypto";
+import { performance } from "perf_hooks";
+
+// Importação dos módulos
+import { openAIChain } from "./modules/openAI.mjs";
 import { lipSync } from "./modules/rhubarbLipSync.mjs";
-import { convertAudioToText } from "./modules/whisper.mjs";
-import kokoro from "./modules/kokoro.mjs"; 
-import crypto from "crypto"; 
+import { convertAudioToText } from "./modules/whisper.mjs"; 
+import kokoro from "./modules/kokoro.mjs";
 
 dotenv.config();
 
-const groqKey = process.env.GROQ_API_KEY;
-console.log("\n🔑 --- DIAGNÓSTICO DE CHAVES ---");
-if (!groqKey) {
-  console.error("❌ ERRO: A variável GROQ_API_KEY não existe no .env!");
-} else {
-  console.log(`✅ Chave Groq detectada. Tamanho: ${groqKey.length} caracteres.`);
-}
-console.log("----------------------------------\n");
-
-const app = express();
-app.use(express.json({ limit: "50mb" })); 
-app.use(cors({
-  origin: "*", 
-  methods: ["GET", "POST"],
-}));
 const port = 3000;
+const app = express();
 
-// 🧠 MEMÓRIA DE TOTEM (Cache em RAM)
+// Configurações
+const MAX_FILES_IN_DISK = 50; // Mantém a pasta limpa
+const AUDIO_DIR = "audios";
+
+app.use(express.json({ limit: "50mb" }));
+app.use(cors({ origin: "*", methods: ["GET", "POST"] }));
+
+// 🧠 CACHE DE MEMÓRIA (RAM) - O SEGREDO DA VELOCIDADE
+// Armazena a resposta pronta (JSON + Base64) para perguntas repetidas
 const audioCache = new Map();
 
+// --- FUNÇÃO DE LIMPEZA DE DISCO ---
+async function manageDiskSpace() {
+    try {
+        if (!fs.existsSync(AUDIO_DIR)) return;
+
+        const files = await fs.promises.readdir(AUDIO_DIR);
+        if (files.length <= MAX_FILES_IN_DISK) return;
+
+        // Mapeia e ordena por data (mais antigos primeiro)
+        const fileStats = await Promise.all(files.map(async file => {
+            const filePath = path.join(AUDIO_DIR, file);
+            const stats = await fs.promises.stat(filePath);
+            return { filePath, mtime: stats.mtime };
+        }));
+
+        fileStats.sort((a, b) => a.mtime - b.mtime);
+
+        // Apaga o excesso
+        const filesToDelete = fileStats.slice(0, files.length - MAX_FILES_IN_DISK);
+        if (filesToDelete.length > 0) {
+            console.log(`🧹 [Limpeza] Removendo ${filesToDelete.length} arquivos antigos...`);
+            for (const file of filesToDelete) {
+                await fs.promises.unlink(file.filePath).catch(() => {});
+            }
+        }
+    } catch (error) {
+        console.error("⚠️ Erro na limpeza:", error.message);
+    }
+}
+
+// --- Rota Principal (/sts) ---
 app.post("/sts", async (req, res) => {
   const requestId = Date.now();
-  console.log(`\n=== [${requestId}] Nova requisição /sts ===`);
-  console.time(`🕒 Tempo Total ${requestId}`);
-  
+  const startTime = performance.now();
+
+  const log = (emoji, msg) => {
+    const timeDiff = (performance.now() - startTime).toFixed(0);
+    console.log(`[${requestId}][+${timeDiff}ms] ${emoji} ${msg}`);
+  };
+
+  log("🚀", "Nova requisição iniciada.");
+
   try {
-    // ---------------------------------------------------------
-    // 0. RECEBIMENTO DO ÁUDIO
-    // ---------------------------------------------------------
+    // 1. Validação
     const base64Audio = req.body.audio;
-    if (!base64Audio) throw new Error("Nenhum áudio recebido no body");
-
+    if (!base64Audio) throw new Error("Nenhum áudio recebido.");
+    
     const audioData = Buffer.from(base64Audio, "base64");
-    console.log(`📦 [Server] Áudio recebido: ${(audioData.length / 1024).toFixed(2)} KB`);
+    log("📦", `Áudio: ${(audioData.length / 1024).toFixed(2)} KB`);
 
-    // ---------------------------------------------------------
-    // 1. WHISPER (Ouvido)
-    // ---------------------------------------------------------
+    // 2. Transcrição (Whisper)
+    const t0_whisper = performance.now();
     const userMessage = await convertAudioToText({ audioData });
-    console.log(`🗣️ Usuário disse: "${userMessage}"`);
+    log("✅", `Whisper (${(performance.now() - t0_whisper).toFixed(0)}ms): "${userMessage}"`);
 
-    // Se não entendeu nada, retorna vazio
-    if (!userMessage || userMessage.trim().length === 0) {
-      console.warn("⚠️ [Server] Áudio inaudível ou silêncio.");
-      return res.send({ messages: [] });
+    if (!userMessage || userMessage.trim() === "") {
+        return res.send({ messages: [] });
     }
 
-    // ---------------------------------------------------------
-    // ⚡ CACHE CHECK (A Otimização de Velocidade)
-    // ---------------------------------------------------------
-    // Cria uma chave única (ex: "que horas abre" == "que horas abre?")
-    const cacheKey = userMessage.toLowerCase().trim()
-      .normalize("NFD").replace(/[\u0300-\u036f]/g, ""); // Remove acentos
-
+    // =========================================================
+    // ⚡ SISTEMA DE CACHE (RAM) - RESTAURADO E PRIORITÁRIO
+    // =========================================================
+    const cacheKey = userMessage.toLowerCase().trim();
+    
     if (audioCache.has(cacheKey)) {
-      console.log(`⚡ CACHE HIT! Respondendo instantaneamente para: "${userMessage}"`);
-      const cachedData = audioCache.get(cacheKey);
-      
-      res.send({ messages: cachedData });
-      
-      console.timeEnd(`🕒 Tempo Total ${requestId}`);
-      return; // <--- ENCERRA AQUI SE ACHAR NO CACHE
+        log("⚡", "CACHE HIT! Pergunta repetida. Respondendo instantaneamente da RAM.");
+        
+        // Pega a resposta pronta da memória e envia
+        const cachedResponse = audioCache.get(cacheKey);
+        res.send({ messages: cachedResponse });
+        
+        log("🏁", `Finalizado via Cache em ${(performance.now() - startTime).toFixed(0)}ms`);
+        return; // <--- ENCERRA AQUI, NÃO GASTA MAIS NADA
+    } else {
+        log("💨", "Cache Miss. É uma pergunta nova. Processando...");
+    }
+    // =========================================================
+
+    // 4. Inteligência (LLM)
+    const t0_llm = performance.now();
+    const aiResponse = await openAIChain.invoke({ question: userMessage });
+    log("✅", `LLM (${(performance.now() - t0_llm).toFixed(0)}ms)`);
+
+    // 5. Geração de Áudio e Boca
+    const messages = [];
+    if (!fs.existsSync(AUDIO_DIR)) fs.mkdirSync(AUDIO_DIR);
+
+    for (const msg of aiResponse.messages) {
+        // Hash curto para nome do arquivo
+        const fileHash = crypto.createHash('md5').update(msg.text).digest('hex').substring(0, 10);
+        const fileName = `${AUDIO_DIR}/speech_${fileHash}.wav`;
+
+        // Cache de Disco (Evita regerar o mesmo áudio se ele ainda existir na pasta)
+        if (!fs.existsSync(fileName)) {
+            log("🎙️", `Gerando voz (Kokoro)...`);
+            await kokoro.generate(msg.text, fileName);
+            
+            log("👄", `Gerando lipsync...`);
+            await lipSync.generate(fileName);
+        } else {
+            log("⏩", `Áudio já existe no disco, reutilizando arquivo.`);
+        }
+
+        // Leitura dos arquivos
+        const lipSyncPath = fileName.replace(".wav", ".json");
+        const audioBuffer = await fs.promises.readFile(fileName);
+        let lipSyncContent = [];
+        
+        try {
+            lipSyncContent = JSON.parse(await fs.promises.readFile(lipSyncPath, "utf-8"));
+        } catch (e) {
+            log("⚠️", "JSON do lipsync não encontrado, usando padrão.");
+        }
+
+        messages.push({
+            text: msg.text,
+            audio: audioBuffer.toString("base64"),
+            lipsync: lipSyncContent,
+            facialExpression: msg.facialExpression || "smile",
+            animation: msg.animation || "TalkingOne"
+        });
     }
 
-    // ---------------------------------------------------------
-    // 2. CÉREBRO (Se não estava no cache, pensa...)
-    // ---------------------------------------------------------
-    let openAImessages;
-    try {
-      openAImessages = await openAIChain.invoke({ question: userMessage });
-    } catch (error) {
-      console.error("❌ Erro na IA:", error.message);
-      openAImessages = { 
-          messages: [{ 
-              text: "Desculpe, mano, deu um erro aqui.", 
-              animation: "SadIdle", 
-              facialExpression: "sad" 
-          }] 
-      };
-    }
-
-    // ---------------------------------------------------------
-    // 3. GERAÇÃO DE ÁUDIO UNIFICADO
-    // ---------------------------------------------------------
-    console.time("🕒 Kokoro & LipSync ÚNICO");
-
-    // A. Junta tudo num texto só
-    const fullText = openAImessages.messages
-      .map((msg) => msg.text)
-      .join(" ");
-
-    // B. Pega animação da primeira mensagem
-    const mainAnimation = openAImessages.messages[0]?.animation || "TalkingOne";
-    const mainExpression = openAImessages.messages[0]?.facialExpression || "default";
-
-    console.log(`🗣️ Gerando Novo Áudio: "${fullText.substring(0, 40)}..."`);
-
-    // C. Gera arquivos com nome baseado no conteúdo (hash) para não sobrescrever
-    // Usamos um Hash MD5 da pergunta para o nome do arquivo, ajuda no debug
-    const fileHash = crypto.createHash('md5').update(cacheKey).digest('hex');
-    const fileName = `speech_${fileHash}.wav`;
+    // 💾 SALVA NO CACHE DE RAM AGORA
+    // Da próxima vez que perguntarem isso, a resposta sai na hora.
+    audioCache.set(cacheKey, messages);
+    log("💾", "Resposta salva no Cache de RAM.");
     
-    // Gera áudio (Kokoro)
-    const audioPath = await kokoro.generate(fullText, `audios/${fileName}`);
+    // Envia resposta
+    res.send({ messages });
+    log("🏁", `Concluído em ${(performance.now() - startTime).toFixed(0)}ms`);
 
-    // Gera boca (Rhubarb)
-    const lipSyncPath = await lipSync.generate(audioPath);
+    // Limpeza de disco em segundo plano
+    setTimeout(manageDiskSpace, 100); 
 
-    console.timeEnd("🕒 Kokoro & LipSync ÚNICO");
-
-    // ---------------------------------------------------------
-    // 4. LEITURA E ENVIO
-    // ---------------------------------------------------------
-    const audioBuffer = await fs.promises.readFile(audioPath);
-    const lipSyncContent = JSON.parse(await fs.promises.readFile(lipSyncPath, "utf-8"));
-
-    const finalResponse = [
-      {
-        text: fullText,
-        audio: audioBuffer.toString("base64"),
-        lipsync: lipSyncContent,
-        facialExpression: mainExpression,
-        animation: mainAnimation,
-      },
-    ];
-
-    // 💾 SALVA NO CACHE (Para a próxima vez ser rápido)
-    audioCache.set(cacheKey, finalResponse);
-    console.log(`💾 Guardado na memória: "${cacheKey}"`);
-
-    console.log("✅ [Server] Enviando resposta nova.");
-    res.send({ messages: finalResponse });
-    
-    console.timeEnd(`🕒 Tempo Total ${requestId}`);
-    console.log("========================================\n");
-
-  } catch (err) {
-    console.error("\n❌ [Server] ERRO FATAL EM /sts:");
-    console.error(err);
-    res.status(500).send({ error: err.message });
+  } catch (error) {
+    log("❌", error.message);
+    res.status(500).send({ error: error.message });
   }
 });
 
-app.get("/voices", async (req, res) => res.send([]));
+app.get("/health", (req, res) => res.send("Jack está ON com Cache!"));
 
 app.listen(port, () => {
-  console.log(`🚀 Jack (Versão Totem Cache) ouvindo na porta ${port}`);
+  console.log(`🚀 Jack ouvindo na porta ${port}`);
+  console.log(`⚡ Cache de RAM: ATIVADO`);
+  console.log(`🧹 Limpeza de Disco: ATIVADO (Max ${MAX_FILES_IN_DISK} arquivos)`);
 });

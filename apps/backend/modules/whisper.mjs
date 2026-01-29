@@ -1,94 +1,48 @@
 import fs from "fs";
 import path from "path";
-import OpenAI, { toFile } from "openai"; // <--- Importação nova 'toFile'
+import os from "os";
+import axios from "axios";
+import FormData from "form-data";
+// CORREÇÃO 1: Usa dois pontos (..) porque estamos dentro de 'modules'
 import { convertAudioToWav } from "../utils/audios.mjs";
-import dotenv from "dotenv";
 
-dotenv.config({ path: path.resolve(process.cwd(), ".env") });
+const WHISPER_URL = (process.env.WHISPER_URL || "http://localhost:9000").replace(/\/$/, "");
 
-// --- CONFIGURAÇÃO (Mantive sua lógica de Fallback) ---
-const groqKey = process.env.GROQ_API_KEY;
-const openaiKey = process.env.OPENAI_API_KEY;
-
-const groqClient = groqKey
-  ? new OpenAI({
-      apiKey: groqKey,
-      baseURL: "https://api.groq.com/openai/v1",
-      timeout: 20000,
-    })
-  : null;
-
-const openaiClient = openaiKey
-  ? new OpenAI({
-      apiKey: openaiKey,
-      timeout: 30000,
-    })
-  : null;
-
-// --- FUNÇÃO DE ENVIO SEGURO (MEMÓRIA) ---
-async function transcribe(client, bufferData, modelName) {
-  // Converte o Buffer cru para um Objeto de Arquivo que a OpenAI aceita
-  // Isso evita ler do disco durante a requisição de rede
-  const file = await toFile(bufferData, "input.wav", {
-    type: "audio/wav",
-  });
-
-  return await client.audio.transcriptions.create({
-    file: file,
-    model: modelName,
-    language: "pt",
-    response_format: "json",
-  });
-}
-
-// --- FLUXO PRINCIPAL ---
 async function convertAudioToText({ audioData }) {
-  console.log("🔹 [Whisper] Iniciando processamento...");
+  let tempFilePath = null;
 
   try {
-    // 1. Converte e já pega o BUFFER (Não o caminho do arquivo)
-    // A função convertAudioToWav que fizemos já retorna o buffer no final!
     const wavBuffer = await convertAudioToWav({ audioData });
+    const fileName = `rec_${Date.now()}.wav`;
+    tempFilePath = path.join(os.tmpdir(), fileName);
+    await fs.promises.writeFile(tempFilePath, wavBuffer);
 
-    // Se o buffer vier vazio, para tudo
-    if (!wavBuffer || wavBuffer.length === 0) {
-      throw new Error("Buffer de áudio vazio após conversão.");
-    }
+    const formData = new FormData();
+    // CORREÇÃO 2: A imagem onerahmet exige 'audio_file'
+    formData.append("audio_file", fs.createReadStream(tempFilePath)); 
 
-    let text = "";
+    const headers = { ...formData.getHeaders() };
 
-    // 2. Tenta GROQ (Grátis)
-    if (groqClient) {
-      try {
-        console.log("🚀 [STT] Tentando via GROQ (Memória)...");
-        const response = await transcribe(groqClient, wavBuffer, "whisper-large-v3");
-        text = response.text;
-        console.log(`✅ [STT] Sucesso via Groq: "${text}"`);
-        return text; // Se deu certo, retorna e sai
-      } catch (err) {
-        console.warn("⚠️ [STT] Groq falhou. Motivo:", err.message);
-      }
-    }
+    // CORREÇÃO 3: Rota compatível com a imagem onerahmet
+    const url = `${WHISPER_URL}/asr?task=transcribe&language=pt&output=json`;
 
-    // 3. Tenta OPENAI (Pago - Fallback)
-    if (openaiClient) {
-      try {
-        console.log("💸 [STT] Tentando via OPENAI (Memória)...");
-        const response = await transcribe(openaiClient, wavBuffer, "whisper-1");
-        text = response.text;
-        console.log(`✅ [STT] Sucesso via OpenAI: "${text}"`);
-        return text;
-      } catch (err) {
-        console.error("❌ [STT] OpenAI falhou. Motivo:", err.message);
-        throw err; // Joga o erro pra cima se o último falhar
-      }
-    }
+    const response = await axios.post(url, formData, {
+      headers: headers,
+      maxBodyLength: Infinity,
+      maxContentLength: Infinity,
+    });
 
-    throw new Error("Nenhum cliente de IA configurado ou disponível.");
+    const transcription = response.data.text || "";
+    return transcription.trim();
 
   } catch (error) {
-    console.error("❌ [Whisper] Erro Fatal:", error);
-    throw error;
+    console.error("❌ [Whisper Erro]:", error.message);
+    if (error.response) console.error("Detalhes:", error.response.data);
+    return "";
+  } finally {
+    if (tempFilePath && fs.existsSync(tempFilePath)) {
+      try { await fs.promises.unlink(tempFilePath); } catch (e) {}
+    }
   }
 }
 

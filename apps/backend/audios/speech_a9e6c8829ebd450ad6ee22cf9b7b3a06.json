@@ -1,9 +1,0 @@
-{
-  "metadata": {
-    "soundFile": "C:\\Users\\Admin\\Documents\\repo_James\\talking-avatar-with-ai\\apps\\backend\\audios\\speech_a9e6c8829ebd450ad6ee22cf9b7b3a06.wav",
-    "duration": 0.00
-  },
-  "mouthCues": [
-    { "start": 0.00, "end": 0.00, "value": "X" }
-  ]
-}

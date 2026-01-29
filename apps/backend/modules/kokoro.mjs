@@ -1,8 +1,7 @@
 import fs from "fs";
 import path from "path";
-import fetch from "node-fetch";
+// REMOVI A LINHA DO NODE-FETCH QUE CAUSA O CRASH
 
-// URL do Kokoro (ajuste se necessário, mas o padrão do container é esse)
 const KOKORO_URL = process.env.KOKORO_API_URL || "http://localhost:8880/v1/audio/speech";
 
 const kokoro = {
@@ -10,15 +9,16 @@ const kokoro = {
     try {
       console.log(`🗣️ Gerando áudio Kokoro para: "${text.substring(0, 20)}..."`);
       
+      // O 'fetch' já existe nativo no seu Node.js, não precisa importar
       const response = await fetch(KOKORO_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           model: "kokoro",
           input: text,
-          voice: "pm_alex", // Escolha sua voz aqui
-          response_format: "wav", // Importante: WAV para o Rhubarb
-          speed: 1.0
+          voice: "pm_alex", 
+          response_format: "wav", 
+          speed: 1.15
         }),
       });
 
@@ -29,7 +29,6 @@ const kokoro = {
       const arrayBuffer = await response.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
 
-      // Salva o arquivo na pasta audios (ex: audios/message_0.wav)
       const filePath = path.resolve(fileName); 
       await fs.promises.writeFile(filePath, buffer);
       
@@ -37,7 +36,7 @@ const kokoro = {
       return filePath;
 
     } catch (error) {
-      console.error("❌ Erro no Kokoro:", error);
+      console.error("❌ Erro no Kokoro:", error.message);
       throw error;
     }
   },
