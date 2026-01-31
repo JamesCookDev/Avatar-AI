@@ -3,28 +3,39 @@ import path from "path";
 import os from "os";
 import axios from "axios";
 import FormData from "form-data";
-// CORREÇÃO 1: Usa dois pontos (..) porque estamos dentro de 'modules'
+import { isAudioSilent } from "../utils/vad.mjs"; // O Porteiro (VAD)
 import { convertAudioToWav } from "../utils/audios.mjs";
 
 const WHISPER_URL = (process.env.WHISPER_URL || "http://localhost:9000").replace(/\/$/, "");
+
+// DICA DE CONTEXTO (Importante para o modelo acertar nomes locais)
+const contextPrompt = "Porto Futuro 2, Belém, Pará, turismo, gastronomia, horários, mirante.";
+const encodedPrompt = encodeURIComponent(contextPrompt);
 
 async function convertAudioToText({ audioData }) {
   let tempFilePath = null;
 
   try {
+    // 1. Verifica silêncio (0ms delay)
     const wavBuffer = await convertAudioToWav({ audioData });
+    if (isAudioSilent(wavBuffer)) {
+        console.log("🔇 Silêncio ignorado.");
+        return "";
+    }
+
+    // 2. Salva temporário
     const fileName = `rec_${Date.now()}.wav`;
     tempFilePath = path.join(os.tmpdir(), fileName);
     await fs.promises.writeFile(tempFilePath, wavBuffer);
 
+    // 3. Prepara envio
     const formData = new FormData();
-    // CORREÇÃO 2: A imagem onerahmet exige 'audio_file'
     formData.append("audio_file", fs.createReadStream(tempFilePath)); 
-
     const headers = { ...formData.getHeaders() };
 
-    // CORREÇÃO 3: Rota compatível com a imagem onerahmet
-    const url = `${WHISPER_URL}/asr?task=transcribe&language=pt&output=json`;
+    // 4. URL OTIMIZADA (SEM BEAM_SIZE PARA NÃO CRASHAR)
+    // temperature=0: Fiel ao áudio (não inventa)
+    const url = `${WHISPER_URL}/asr?task=transcribe&language=pt&output=json&initial_prompt=${encodedPrompt}&temperature=0`;
 
     const response = await axios.post(url, formData, {
       headers: headers,
@@ -32,17 +43,25 @@ async function convertAudioToText({ audioData }) {
       maxContentLength: Infinity,
     });
 
-    const transcription = response.data.text || "";
-    return transcription.trim();
+    let transcription = (response.data.text || "").trim();
+
+    // 5. Filtros de segurança
+    if (transcription.length < 2) return "";
+    
+    // Lista negra de alucinações comuns
+    const blacklist = ["Legendas pela", "Amara.org", "MBC", "Laughter", "Aplausos"];
+    if (blacklist.some(term => transcription.includes(term))) {
+        console.log(`👻 Alucinação removida: "${transcription}"`);
+        return "";
+    }
+
+    return transcription;
 
   } catch (error) {
-    console.error("❌ [Whisper Erro]:", error.message);
-    if (error.response) console.error("Detalhes:", error.response.data);
+    console.error("❌ Whisper Erro:", error.message);
     return "";
   } finally {
-    if (tempFilePath && fs.existsSync(tempFilePath)) {
-      try { await fs.promises.unlink(tempFilePath); } catch (e) {}
-    }
+    if (tempFilePath) try { await fs.promises.unlink(tempFilePath); } catch {}
   }
 }
 

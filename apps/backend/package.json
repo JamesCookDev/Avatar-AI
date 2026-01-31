@@ -10,6 +10,7 @@
   "dependencies": {
     "@langchain/core": "^1.1.17",
     "@langchain/groq": "^1.0.3",
+    "@langchain/ollama": "^1.2.1",
     "@langchain/openai": "^0.0.12",
     "axios": "^1.13.4",
     "cors": "^2.8.5",

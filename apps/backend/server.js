@@ -6,173 +6,140 @@ import path from "path";
 import crypto from "crypto";
 import { performance } from "perf_hooks";
 
-// Importação dos módulos
-import { openAIChain } from "./modules/openAI.mjs";
 import { lipSync } from "./modules/rhubarbLipSync.mjs";
 import { convertAudioToText } from "./modules/whisper.mjs"; 
 import kokoro from "./modules/kokoro.mjs";
+import { streamResponse } from "./modules/localLLM.mjs";
 
 dotenv.config();
 
 const port = 3000;
 const app = express();
-
-// Configurações
-const MAX_FILES_IN_DISK = 50; // Mantém a pasta limpa
 const AUDIO_DIR = "audios";
+if (!fs.existsSync(AUDIO_DIR)) fs.mkdirSync(AUDIO_DIR);
 
 app.use(express.json({ limit: "50mb" }));
 app.use(cors({ origin: "*", methods: ["GET", "POST"] }));
 
-// 🧠 CACHE DE MEMÓRIA (RAM) - O SEGREDO DA VELOCIDADE
-// Armazena a resposta pronta (JSON + Base64) para perguntas repetidas
 const audioCache = new Map();
 
-// --- FUNÇÃO DE LIMPEZA DE DISCO ---
-async function manageDiskSpace() {
-    try {
-        if (!fs.existsSync(AUDIO_DIR)) return;
-
-        const files = await fs.promises.readdir(AUDIO_DIR);
-        if (files.length <= MAX_FILES_IN_DISK) return;
-
-        // Mapeia e ordena por data (mais antigos primeiro)
-        const fileStats = await Promise.all(files.map(async file => {
-            const filePath = path.join(AUDIO_DIR, file);
-            const stats = await fs.promises.stat(filePath);
-            return { filePath, mtime: stats.mtime };
-        }));
-
-        fileStats.sort((a, b) => a.mtime - b.mtime);
-
-        // Apaga o excesso
-        const filesToDelete = fileStats.slice(0, files.length - MAX_FILES_IN_DISK);
-        if (filesToDelete.length > 0) {
-            console.log(`🧹 [Limpeza] Removendo ${filesToDelete.length} arquivos antigos...`);
-            for (const file of filesToDelete) {
-                await fs.promises.unlink(file.filePath).catch(() => {});
-            }
-        }
-    } catch (error) {
-        console.error("⚠️ Erro na limpeza:", error.message);
-    }
-}
-
-// --- Rota Principal (/sts) ---
 app.post("/sts", async (req, res) => {
   const requestId = Date.now();
   const startTime = performance.now();
-
+  
+  // LOG DETALHADO
   const log = (emoji, msg) => {
-    const timeDiff = (performance.now() - startTime).toFixed(0);
-    console.log(`[${requestId}][+${timeDiff}ms] ${emoji} ${msg}`);
+      const t = (performance.now() - startTime).toFixed(0);
+      console.log(`[${requestId}][+${t}ms] ${emoji} ${msg}`);
   };
 
-  log("🚀", "Nova requisição iniciada.");
-
   try {
-    // 1. Validação
+    log("🔌", "Recebendo requisição...");
     const base64Audio = req.body.audio;
-    if (!base64Audio) throw new Error("Nenhum áudio recebido.");
+    if (!base64Audio) {
+        log("⚠️", "Áudio vazio recebido.");
+        return res.json({ messages: [] });
+    }
     
+    // 1. Whisper
+    log("🎤", "Enviando para Whisper...");
     const audioData = Buffer.from(base64Audio, "base64");
-    log("📦", `Áudio: ${(audioData.length / 1024).toFixed(2)} KB`);
-
-    // 2. Transcrição (Whisper)
-    const t0_whisper = performance.now();
     const userMessage = await convertAudioToText({ audioData });
-    log("✅", `Whisper (${(performance.now() - t0_whisper).toFixed(0)}ms): "${userMessage}"`);
-
-    if (!userMessage || userMessage.trim() === "") {
-        return res.send({ messages: [] });
-    }
-
-    // =========================================================
-    // ⚡ SISTEMA DE CACHE (RAM) - RESTAURADO E PRIORITÁRIO
-    // =========================================================
-    const cacheKey = userMessage.toLowerCase().trim();
     
-    if (audioCache.has(cacheKey)) {
-        log("⚡", "CACHE HIT! Pergunta repetida. Respondendo instantaneamente da RAM.");
-        
-        // Pega a resposta pronta da memória e envia
-        const cachedResponse = audioCache.get(cacheKey);
-        res.send({ messages: cachedResponse });
-        
-        log("🏁", `Finalizado via Cache em ${(performance.now() - startTime).toFixed(0)}ms`);
-        return; // <--- ENCERRA AQUI, NÃO GASTA MAIS NADA
-    } else {
-        log("💨", "Cache Miss. É uma pergunta nova. Processando...");
+    if (!userMessage) {
+        log("🔇", "Silêncio ou ruído detectado pelo Whisper.");
+        return res.json({ messages: [] });
     }
-    // =========================================================
+    log("🗣️", `Texto reconhecido: "${userMessage}"`);
 
-    // 4. Inteligência (LLM)
-    const t0_llm = performance.now();
-    const aiResponse = await openAIChain.invoke({ question: userMessage });
-    log("✅", `LLM (${(performance.now() - t0_llm).toFixed(0)}ms)`);
+    // Cache
+    if (audioCache.has(userMessage.toLowerCase())) {
+        log("⚡", "RESPOSTA EM CACHE ENCONTRADA!");
+        return res.json({ messages: audioCache.get(userMessage.toLowerCase()) });
+    }
 
-    // 5. Geração de Áudio e Boca
-    const messages = [];
-    if (!fs.existsSync(AUDIO_DIR)) fs.mkdirSync(AUDIO_DIR);
+    // 2. Stream IA
+    log("🧠", "Iniciando Llama (Streaming)...");
+    const stream = await streamResponse({ question: userMessage });
+    
+    let buffer = "";
+    const pendingPromises = []; 
 
-    for (const msg of aiResponse.messages) {
-        // Hash curto para nome do arquivo
-        const fileHash = crypto.createHash('md5').update(msg.text).digest('hex').substring(0, 10);
+    // O EXORCISTA DE SÍMBOLOS (Remove Asteriscos)
+    const cleanAndGenerate = (rawText) => {
+        if (rawText.includes("Como posso ajudar")) {
+            buffer = "";
+        }
+        
+        let cleanText = rawText
+            .replace(/[*#\-_•\[\]()]/g, "") // Remove símbolos gráficos
+            .replace(/^\d+\.\s*/g, "")      // Remove "1. " no início
+            .replace(/\s+/g, " ")           // Remove espaços duplos
+            .trim();
+
+        if (cleanText.length < 2) {
+            log("🗑️", `Texto ignorado (muito curto/sujo): "${rawText}"`);
+            return;
+        }
+
+        log("📝", `Frase limpa capturada: "${cleanText}"`);
+        
+        const fileHash = crypto.createHash('md5').update(cleanText).digest('hex').substring(0, 10);
         const fileName = `${AUDIO_DIR}/speech_${fileHash}.wav`;
-
-        // Cache de Disco (Evita regerar o mesmo áudio se ele ainda existir na pasta)
-        if (!fs.existsSync(fileName)) {
-            log("🎙️", `Gerando voz (Kokoro)...`);
-            await kokoro.generate(msg.text, fileName);
-            
-            log("👄", `Gerando lipsync...`);
-            await lipSync.generate(fileName);
-        } else {
-            log("⏩", `Áudio já existe no disco, reutilizando arquivo.`);
-        }
-
-        // Leitura dos arquivos
-        const lipSyncPath = fileName.replace(".wav", ".json");
-        const audioBuffer = await fs.promises.readFile(fileName);
-        let lipSyncContent = [];
         
-        try {
-            lipSyncContent = JSON.parse(await fs.promises.readFile(lipSyncPath, "utf-8"));
-        } catch (e) {
-            log("⚠️", "JSON do lipsync não encontrado, usando padrão.");
+        const p = (async () => {
+            if (!fs.existsSync(fileName)) {
+                log("🎙️", `Gerando áudio (Kokoro) para: "${cleanText.substring(0, 15)}..."`);
+                await kokoro.generate(cleanText, fileName);
+                log("👄", `Gerando LipSync...`);
+                await lipSync.generate(fileName);
+            } else {
+                log("♻️", `Áudio já existe no disco.`);
+            }
+            
+            const audioBuffer = await fs.promises.readFile(fileName);
+            const lipSyncPath = fileName.replace(".wav", ".json");
+            let lipSyncContent = [];
+            try { lipSyncContent = JSON.parse(await fs.promises.readFile(lipSyncPath, "utf-8")); } catch(e) {}
+
+            return {
+                text: cleanText,
+                audio: audioBuffer.toString("base64"),
+                lipsync: lipSyncContent,
+                facialExpression: "smile",
+                animation: "TalkingOne"
+            };
+        })();
+        
+        pendingPromises.push(p);
+    };
+
+    // 3. Consome o Stream
+    for await (const chunk of stream) {
+        buffer += chunk;
+        
+        // Regex de fim de frase
+        if (buffer.match(/[.?!:\n]\s*$/)) {
+            const sentence = buffer.trim();
+            buffer = ""; 
+            cleanAndGenerate(sentence);
         }
-
-        messages.push({
-            text: msg.text,
-            audio: audioBuffer.toString("base64"),
-            lipsync: lipSyncContent,
-            facialExpression: msg.facialExpression || "smile",
-            animation: msg.animation || "TalkingOne"
-        });
     }
+    if (buffer.trim()) cleanAndGenerate(buffer.trim());
 
-    // 💾 SALVA NO CACHE DE RAM AGORA
-    // Da próxima vez que perguntarem isso, a resposta sai na hora.
-    audioCache.set(cacheKey, messages);
-    log("💾", "Resposta salva no Cache de RAM.");
+    log("⏳", "Aguardando finalização dos áudios paralelos...");
+    const results = await Promise.all(pendingPromises);
     
-    // Envia resposta
-    res.send({ messages });
-    log("🏁", `Concluído em ${(performance.now() - startTime).toFixed(0)}ms`);
-
-    // Limpeza de disco em segundo plano
-    setTimeout(manageDiskSpace, 100); 
+    audioCache.set(userMessage.toLowerCase(), results);
+    
+    log("🏁", `Enviando resposta com ${results.length} frases.`);
+    res.json({ messages: results });
 
   } catch (error) {
-    log("❌", error.message);
-    res.status(500).send({ error: error.message });
+    log("❌", `ERRO FATAL: ${error.message}`);
+    console.error(error);
+    res.status(500).json({ error: error.message });
   }
 });
 
-app.get("/health", (req, res) => res.send("Jack está ON com Cache!"));
-
-app.listen(port, () => {
-  console.log(`🚀 Jack ouvindo na porta ${port}`);
-  console.log(`⚡ Cache de RAM: ATIVADO`);
-  console.log(`🧹 Limpeza de Disco: ATIVADO (Max ${MAX_FILES_IN_DISK} arquivos)`);
-});
+app.listen(port, () => console.log(`🚀 Jack Turbo ON na porta ${port}`));

@@ -2,39 +2,22 @@ version: "3.8"
 
 services:
   whisper:
-    image: onerahmet/openai-whisper-asr-webservice:latest
+    image: onerahmet/openai-whisper-asr-webservice:latest-gpu
     container_name: whisper_local
     restart: unless-stopped
-    
-    # Mapeia a porta 9000 do container para o seu PC
     ports:
       - "9000:9000"
-
-    volumes:
-      # Mantém o cache dos modelos no seu computador
-      - whisper_hf_cache:/root/.cache/huggingface
-      - whisper_torch_cache:/root/.cache/torch
-      - whisper_hf_home:/root/.huggingface
-
     environment:
       TZ: "America/Belem"
-
-      # --- MUDANÇA PRINCIPAL (LEVEZA) ---
-      # Trocamos "whisperx" por "openai_whisper" (com UNDERSCORE, não hífen).
-      # Isso remove a carga pesada de processamento de oradores.
       ASR_ENGINE: "openai_whisper"
       
-      # --- OTIMIZAÇÃO DE VELOCIDADE ---
-      # "base" é muito mais rápido que "small" e suficiente para conversas.
+      # MANTEMOS 'small' PARA INTELIGÊNCIA (contexto)
       ASR_MODEL: "small"
       
-      # --- CORREÇÃO DE CRASH NA GTX 1660 ---
-      # Sua placa não aceita bem FP16 nessa imagem. 
-      # Usar "float32" evita que ele caia para CPU (o que deixava lento).
-      ASR_DEVICE: "cpu"
-      ASR_QUANTIZATION: "int8"
+      # SEGURANÇA DE MEMÓRIA
+      ASR_DEVICE: "cuda"
+      ASR_QUANTIZATION: "float32"
 
-    # Configuração para passar a GPU para o container
     deploy:
       resources:
         reservations:
