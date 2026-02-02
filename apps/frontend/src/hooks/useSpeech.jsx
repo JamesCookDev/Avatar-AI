@@ -2,9 +2,14 @@ import { createContext, useContext, useEffect, useState, useRef } from "react";
 
 const SpeechContext = createContext();
 
-// 1. Pega a URL do .env (Profissional)
-// Se não tiver .env, usa localhost como fallback
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// CONSTANTES
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
+const MIN_AUDIO_SIZE = 3000;        // Tamanho mínimo do áudio em bytes
+const VOICE_THRESHOLD = 25;          // Sensibilidade do microfone (20-30)
+const SILENCE_TIMEOUT = 1500;        // ms de silêncio para parar gravação
+const PLAYBACK_COOLDOWN = 500;       // ms de espera após reprodução
 
 export const useSpeech = () => {
   const context = useContext(SpeechContext);
@@ -32,14 +37,45 @@ export const SpeechProvider = ({ children }) => {
     setMessage(nextMessage);
   };
 
+  // --- FUNÇÃO PARA ENVIAR MENSAGEM DE TEXTO ---
+  const sendMessage = async (text) => {
+    if (!text || loading || isPlayingRef.current) return;
+
+    setLoading(true);
+
+    try {
+      console.log(`🚀 Enviando mensagem para: ${API_URL}/text`);
+
+      const response = await fetch(`${API_URL}/text`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: text }),
+      });
+
+      if (!response.ok) throw new Error("Erro de conexão com o servidor");
+
+      const data = await response.json();
+
+      if (data.messages && data.messages.length > 0) {
+        // Adiciona na fila
+        data.messages.forEach(msg => queueRef.current.push(msg));
+        processQueue();
+      }
+    } catch (error) {
+      console.error("Erro ao enviar mensagem:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const onMessagePlayed = () => {
     setMessage(null);
     
-    // 🕒 COOLDOWN: Espera 0.5s para o eco da sala sumir antes de ouvir de novo
+    // Cooldown para evitar eco
     setTimeout(() => {
-      isPlayingRef.current = false; // 🔓 LIBERA O MICROFONE
+      isPlayingRef.current = false;
       processQueue();
-    }, 500); 
+    }, PLAYBACK_COOLDOWN); 
   };
 
   // --- MICROFONE & VAD ---
@@ -80,7 +116,7 @@ export const SpeechProvider = ({ children }) => {
           audioChunksRef.current = [];
           setListening(false);
 
-          if (audioBlob.size < 3000) return; // Ignora áudios muito curtos/ruídos (< 3kb)
+          if (audioBlob.size < MIN_AUDIO_SIZE) return; // Ignora áudios muito curtos
 
           setLoading(true);
 
@@ -138,8 +174,7 @@ export const SpeechProvider = ({ children }) => {
           for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
           const average = sum / dataArray.length;
 
-          // Ajuste a sensibilidade se precisar (20 a 30 é bom para ambientes normais)
-          if (average > 25) { 
+          if (average > VOICE_THRESHOLD) { 
              // Voz detectada!
              if (mediaRecorderRef.current.state === "inactive" && !loading) {
                 console.log("🎤 Voz detectada! Gravando...");
@@ -154,13 +189,12 @@ export const SpeechProvider = ({ children }) => {
           } else {
              // Silêncio
              if (mediaRecorderRef.current.state === "recording" && !silenceTimerRef.current) {
-                // Espera 1.5 segundos de silêncio para cortar
                 silenceTimerRef.current = setTimeout(() => {
                    if (mediaRecorderRef.current.state === "recording") {
                       console.log("🤫 Silêncio detectado. Parando gravação.");
                       mediaRecorderRef.current.stop();
                    }
-                }, 1500); 
+                }, SILENCE_TIMEOUT); 
              }
           }
           animationFrame = requestAnimationFrame(checkVolume);
@@ -182,7 +216,7 @@ export const SpeechProvider = ({ children }) => {
   }, []);
 
   return (
-    <SpeechContext.Provider value={{ message, onMessagePlayed, loading, listening }}>
+    <SpeechContext.Provider value={{ message, onMessagePlayed, loading, listening, sendMessage }}>
       {children}
     </SpeechContext.Provider>
   );

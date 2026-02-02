@@ -9,14 +9,16 @@ services:
       - "9000:9000"
     environment:
       TZ: "America/Belem"
-      ASR_ENGINE: "openai_whisper"
       
-      # MANTEMOS 'small' PARA INTELIGÊNCIA (contexto)
-      ASR_MODEL: "small"
+      # ⚡ FASTER-WHISPER: ~4x mais rápido que openai_whisper
+      ASR_ENGINE: "faster_whisper"
       
-      # SEGURANÇA DE MEMÓRIA
+      # Modelo 'base' é rápido e suficiente para português
+      ASR_MODEL: "base"
+      
+      # GPU + INT8 para máxima velocidade
       ASR_DEVICE: "cuda"
-      ASR_QUANTIZATION: "float32"
+      ASR_QUANTIZATION: "int8"
 
     deploy:
       resources:
