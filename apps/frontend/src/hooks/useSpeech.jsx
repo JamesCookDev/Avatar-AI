@@ -3,7 +3,18 @@ import React, { createContext, useContext, useEffect, useMemo, useRef, useState 
 
 const backendUrl = "http://localhost:3000";
 
+<<<<<<< HEAD
 const SpeechContext = createContext(null);
+=======
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// CONSTANTES
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
+const MIN_AUDIO_SIZE = 3000;        // Tamanho mínimo do áudio em bytes
+const VOICE_THRESHOLD = 25;          // Sensibilidade do microfone (20-30)
+const SILENCE_TIMEOUT = 1500;        // ms de silêncio para parar gravação
+const PLAYBACK_COOLDOWN = 500;       // ms de espera após reprodução
+>>>>>>> feat/iaLocal
 
 function pickSupportedMimeType() {
   const candidates = [
@@ -62,8 +73,64 @@ export const SpeechProvider = ({ children }) => {
   // always listening
   const [alwaysListening, setAlwaysListening] = useState(true);
 
+<<<<<<< HEAD
   const streamRef = useRef(null);
   const audioCtxRef = useRef(null);
+=======
+    const nextMessage = queueRef.current.shift();
+    
+    // 🔒 TRAVA O MICROFONE IMEDIATAMENTE
+    isPlayingRef.current = true; 
+    setMessage(nextMessage);
+  };
+
+  // --- FUNÇÃO PARA ENVIAR MENSAGEM DE TEXTO ---
+  const sendMessage = async (text) => {
+    if (!text || loading || isPlayingRef.current) return;
+
+    setLoading(true);
+
+    try {
+      console.log(`🚀 Enviando mensagem para: ${API_URL}/text`);
+
+      const response = await fetch(`${API_URL}/text`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: text }),
+      });
+
+      if (!response.ok) throw new Error("Erro de conexão com o servidor");
+
+      const data = await response.json();
+
+      if (data.messages && data.messages.length > 0) {
+        // Adiciona na fila
+        data.messages.forEach(msg => queueRef.current.push(msg));
+        processQueue();
+      }
+    } catch (error) {
+      console.error("Erro ao enviar mensagem:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onMessagePlayed = () => {
+    setMessage(null);
+    
+    // Cooldown para evitar eco
+    setTimeout(() => {
+      isPlayingRef.current = false;
+      processQueue();
+    }, PLAYBACK_COOLDOWN); 
+  };
+
+  // --- MICROFONE & VAD ---
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+  const silenceTimerRef = useRef(null);
+  const audioContextRef = useRef(null);
+>>>>>>> feat/iaLocal
   const analyserRef = useRef(null);
   const rafRef = useRef(null);
 
@@ -162,6 +229,7 @@ export const SpeechProvider = ({ children }) => {
         const blob = new Blob(chunksRef.current, { type: mr.mimeType || "audio/webm" });
         log("[AL] STOP gravação | durMs:", durMs, "| blob:", blob.size, "| type:", blob.type);
 
+<<<<<<< HEAD
         // filtros
         if (durMs < cfg.minSpeechMs) {
           log("[AL] duracao pequena, ignorando");
@@ -171,6 +239,9 @@ export const SpeechProvider = ({ children }) => {
           log("[AL] blob pequeno, ignorando");
           return;
         }
+=======
+          if (audioBlob.size < MIN_AUDIO_SIZE) return; // Ignora áudios muito curtos
+>>>>>>> feat/iaLocal
 
         setLoading(true);
 
@@ -190,8 +261,74 @@ export const SpeechProvider = ({ children }) => {
         const chat = await chatToAvatar(text);
         const msgs = chat?.messages || [];
 
+<<<<<<< HEAD
         setMessages(msgs);
         setMessage(msgs[0] || null);
+=======
+                  const data = await response.json();
+
+                  if (data.messages && data.messages.length > 0) {
+                    // Adiciona na fila
+                    data.messages.forEach(msg => queueRef.current.push(msg));
+                    processQueue();
+                  }
+              } catch (fetchErr) {
+                  console.error("Erro no fetch:", fetchErr);
+              }
+              
+              setLoading(false);
+            };
+          } catch (error) {
+            console.error(error);
+            setLoading(false);
+          }
+        };
+
+        // --- LÓGICA DE DETECÇÃO DE VOZ (VAD) ---
+        const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
+        
+        const checkVolume = () => {
+          // 🛑 TRAVA DE SEGURANÇA (O PULO DO GATO)
+          // Se o Avatar estiver falando ou tiver algo na fila, 
+          // a gente sai da função e NÃO escuta nada.
+          if (isPlayingRef.current || queueRef.current.length > 0) {
+             animationFrame = requestAnimationFrame(checkVolume);
+             return; 
+          }
+
+          analyserRef.current.getByteFrequencyData(dataArray);
+          let sum = 0;
+          for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+          const average = sum / dataArray.length;
+
+          if (average > VOICE_THRESHOLD) { 
+             // Voz detectada!
+             if (mediaRecorderRef.current.state === "inactive" && !loading) {
+                console.log("🎤 Voz detectada! Gravando...");
+                mediaRecorderRef.current.start();
+                setListening(true);
+             }
+             // Reseta timer de silêncio
+             if (silenceTimerRef.current) {
+                clearTimeout(silenceTimerRef.current);
+                silenceTimerRef.current = null;
+             }
+          } else {
+             // Silêncio
+             if (mediaRecorderRef.current.state === "recording" && !silenceTimerRef.current) {
+                silenceTimerRef.current = setTimeout(() => {
+                   if (mediaRecorderRef.current.state === "recording") {
+                      console.log("🤫 Silêncio detectado. Parando gravação.");
+                      mediaRecorderRef.current.stop();
+                   }
+                }, SILENCE_TIMEOUT); 
+             }
+          }
+          animationFrame = requestAnimationFrame(checkVolume);
+        };
+        
+        checkVolume();
+>>>>>>> feat/iaLocal
 
         // Se você tem player/engine do avatar em outro lugar,
         // aqui é onde você dispara a reprodução em sequência.
@@ -347,6 +484,7 @@ export const SpeechProvider = ({ children }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [alwaysListening]);
 
+<<<<<<< HEAD
   const value = {
     loading,
     messages,
@@ -372,3 +510,11 @@ export function useSpeech() {
   if (!ctx) throw new Error("useSpeech must be used within a SpeechProvider");
   return ctx;
 }
+=======
+  return (
+    <SpeechContext.Provider value={{ message, onMessagePlayed, loading, listening, sendMessage }}>
+      {children}
+    </SpeechContext.Provider>
+  );
+};
+>>>>>>> feat/iaLocal

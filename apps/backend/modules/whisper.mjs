@@ -1,11 +1,14 @@
 import fs from "fs";
 import path from "path";
-import OpenAI, { toFile } from "openai"; // <--- Importação nova 'toFile'
+import os from "os";
+import axios from "axios";
+import FormData from "form-data";
+import { isAudioSilent } from "../utils/vad.mjs"; // O Porteiro (VAD)
 import { convertAudioToWav } from "../utils/audios.mjs";
-import dotenv from "dotenv";
 
-dotenv.config({ path: path.resolve(process.cwd(), ".env") });
+const WHISPER_URL = (process.env.WHISPER_URL || "http://localhost:9000").replace(/\/$/, "");
 
+<<<<<<< HEAD
 async function convertAudioToText({ audioData }) {
   const mp3AudioData = await convertAudioToMp3({ audioData });
   const outputPath = "/tmp/output.mp3";
@@ -24,53 +27,67 @@ async function convertAudioToText({ audioData }) {
 }
 
 // --- FLUXO PRINCIPAL ---
+=======
+// DICA DE CONTEXTO (Importante para o modelo acertar nomes locais)
+const contextPrompt = "Porto Futuro 2, Belém, Pará";
+const encodedPrompt = encodeURIComponent(contextPrompt);
+
+>>>>>>> feat/iaLocal
 async function convertAudioToText({ audioData }) {
-  console.log("🔹 [Whisper] Iniciando processamento...");
+  let tempFilePath = null;
 
   try {
-    // 1. Converte e já pega o BUFFER (Não o caminho do arquivo)
-    // A função convertAudioToWav que fizemos já retorna o buffer no final!
+    // 1. Verifica silêncio (0ms delay)
     const wavBuffer = await convertAudioToWav({ audioData });
-
-    // Se o buffer vier vazio, para tudo
-    if (!wavBuffer || wavBuffer.length === 0) {
-      throw new Error("Buffer de áudio vazio após conversão.");
+    if (isAudioSilent(wavBuffer)) {
+        console.log("🔇 Silêncio ignorado.");
+        return "";
     }
 
-    let text = "";
+    // 2. Salva temporário
+    const fileName = `rec_${Date.now()}.wav`;
+    tempFilePath = path.join(os.tmpdir(), fileName);
+    await fs.promises.writeFile(tempFilePath, wavBuffer);
 
-    // 2. Tenta GROQ (Grátis)
-    if (groqClient) {
-      try {
-        console.log("🚀 [STT] Tentando via GROQ (Memória)...");
-        const response = await transcribe(groqClient, wavBuffer, "whisper-large-v3");
-        text = response.text;
-        console.log(`✅ [STT] Sucesso via Groq: "${text}"`);
-        return text; // Se deu certo, retorna e sai
-      } catch (err) {
-        console.warn("⚠️ [STT] Groq falhou. Motivo:", err.message);
-      }
+    // 3. Prepara envio
+    const formData = new FormData();
+    formData.append("audio_file", fs.createReadStream(tempFilePath)); 
+    const headers = { ...formData.getHeaders() };
+
+    // 4. URL OTIMIZADA
+    // vad_filter=true: Pula silêncios (mais rápido)
+    // temperature=0: Fiel ao áudio (não inventa)
+    const url = `${WHISPER_URL}/asr?task=transcribe&language=pt&output=json&initial_prompt=${encodedPrompt}&temperature=0&vad_filter=true`;
+
+    const response = await axios.post(url, formData, {
+      headers: headers,
+      maxBodyLength: Infinity,
+      maxContentLength: Infinity,
+    });
+
+    let transcription = (response.data.text || "").trim();
+
+    // 5. Filtros de segurança
+    if (transcription.length < 2) return "";
+    
+    // Lista negra de alucinações comuns do Whisper
+    const blacklist = [
+        "Legendas pela", "Amara.org", "MBC", "Laughter", "Aplausos",
+        "sim voce é ronedo", "sim você é ronedo", "ronedo",
+        "Transcrição", "Tradução", "Obrigado por assistir"
+    ];
+    if (blacklist.some(term => transcription.toLowerCase().includes(term.toLowerCase()))) {
+        console.log(`👻 Alucinação removida: "${transcription}"`);
+        return "";
     }
 
-    // 3. Tenta OPENAI (Pago - Fallback)
-    if (openaiClient) {
-      try {
-        console.log("💸 [STT] Tentando via OPENAI (Memória)...");
-        const response = await transcribe(openaiClient, wavBuffer, "whisper-1");
-        text = response.text;
-        console.log(`✅ [STT] Sucesso via OpenAI: "${text}"`);
-        return text;
-      } catch (err) {
-        console.error("❌ [STT] OpenAI falhou. Motivo:", err.message);
-        throw err; // Joga o erro pra cima se o último falhar
-      }
-    }
-
-    throw new Error("Nenhum cliente de IA configurado ou disponível.");
+    return transcription;
 
   } catch (error) {
-    console.error("❌ [Whisper] Erro Fatal:", error);
-    throw error;
+    console.error("❌ Whisper Erro:", error.message);
+    return "";
+  } finally {
+    if (tempFilePath) try { await fs.promises.unlink(tempFilePath); } catch {}
   }
 }
 

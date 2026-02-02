@@ -1,0 +1,34 @@
+version: "3.8"
+
+services:
+  whisper:
+    image: onerahmet/openai-whisper-asr-webservice:latest-gpu
+    container_name: whisper_local
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+    environment:
+      TZ: "America/Belem"
+      
+      # ⚡ FASTER-WHISPER: ~4x mais rápido que openai_whisper
+      ASR_ENGINE: "faster_whisper"
+      
+      # Modelo 'base' é rápido e suficiente para português
+      ASR_MODEL: "base"
+      
+      # GPU + INT8 para máxima velocidade
+      ASR_DEVICE: "cuda"
+      ASR_QUANTIZATION: "int8"
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+volumes:
+  whisper_hf_cache:
+  whisper_torch_cache:
+  whisper_hf_home:

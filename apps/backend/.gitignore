@@ -38,3 +38,7 @@ next-env.d.ts
 
 # visemes inference
 /bin
+
+# --- ADICIONADO: Ignorar áudios gerados pelo Backend ---
+audios/
+*.wav

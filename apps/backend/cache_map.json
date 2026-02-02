@@ -1,0 +1,250 @@
+{
+  "boa tarde!": [
+    {
+      "text": "Boa tarde! Você está no Porto Futuro 2. É um parque urbano com lazer e contemplação. A entrada é pela Avenida Visconde de Souza Franco, conhecida como Doca. Não é praia e não pode tomar banho no rio. Abre de segunda a domingo, das 10 às 22 horas. Entrada gratuita.",
+      "audioPath": "audios\\speech_43d34d9ba7.wav",
+      "facialExpression": "smile",
+      "animation": "TalkingOne"
+    }
+  ],
+  "explique mais sobre o porto futuro 2.": [
+    {
+      "text": "O Porto Futuro 2 é um parque urbano de lazer e contemplação localizado no bairro do Reduto, em Belém do Pará. É conhecido por ter uma variedade de atrações, incluindo o Porto Gastronômico, o Museu das Amazônias, o Parque da Bioeconomia e as Experiências e Infraestrutura.",
+      "audioPath": "audios\\speech_19028d02eb.wav",
+      "facialExpression": "smile",
+      "animation": "TalkingOne"
+    }
+  ],
+  "explique sobre os horários do porto futuro 2": [
+    {
+      "text": "O Porto Futuro 2 abre de segunda a domingo, das 10 horas às 22 horas.",
+      "audioPath": "audios\\speech_6da91b25b0.wav",
+      "facialExpression": "smile",
+      "animation": "TalkingOne"
+    }
+  ],
+  "onde fica o banheiro?": [
+    {
+      "text": "O banheiro está próximos à entrada principal e perto dos quiosques de alimentação.",
+      "audioPath": "audios\\speech_bc3b05f6d9.wav",
+      "facialExpression": "smile",
+      "animation": "TalkingOne"
+    }
+  ],
+  "explique mais sobre os eventos": [
+    {
+      "text": "Sim, o Porto Futuro 2 é um parque que recebe eventos culturais e shows nos finais de semana. Esses eventos são realizados em diferentes datas do ano, mas geralmente acontecem durante a temporada de verão.",
+      "audioPath": "audios\\speech_df9d4df8a4.wav",
+      "facialExpression": "smile",
+      "animation": "TalkingOne"
+    }
+  ],
+  "porto futuro 2, belém, pará": [
+    {
+      "text": "Sim, você é Ronedo, assistente virtual do Porto Futuro 2.",
+      "audioPath": "audios\\speech_888577df84.wav",
+      "facialExpression": "smile",
+      "animation": "TalkingOne"
+    }
+  ],
+  "portagem": [
+    {
+      "text": "Não há portaria, pois não é praia.",
+      "audioPath": "audios\\speech_3b66c4d888.wav",
+      "facialExpression": "smile",
+      "animation": "TalkingOne"
+    }
+  ],
+  "na tarde": [
+    {
+      "text": "Na tarde, o Porto Futuro 2 é um local ideal para relaxar e se divertir, com a entrada gratuita e a presença de quiosques com comida típica.",
+      "audioPath": "audios\\speech_9ecd25d857.wav",
+      "facialExpression": "smile",
+      "animation": "TalkingOne"
+    }
+  ],
+  "paid.": [
+    {
+      "text": "Não, não é gratuito para entrar no Porto Futuro 2.",
+      "audioPath": "audios\\speech_e941caccdd.wav",
+      "facialExpression": "smile",
+      "animation": "TalkingOne"
+    }
+  ],
+  "pua tarde.": [
+    {
+      "text": "Não, não é praia, nem pode tomar banho no rio.",
+      "audioPath": "audios\\speech_a746117210.wav",
+      "facialExpression": "smile",
+      "animation": "TalkingOne"
+    }
+  ],
+  "boa tarde.": [
+    {
+      "text": "Boa tarde, Ronedo! O Porto Futuro 2 é um parque urbano de lazer e contemplação, com atrações como Museu das Amazônias, Caixa Cultural e Experiências e Infraestr",
+      "audioPath": "audios\\speech_54fdda1cef.wav",
+      "facialExpression": "smile",
+      "animation": "TalkingOne"
+    }
+  ],
+  "e mais sobre o porto futuro 2.": [
+    {
+      "text": "O Porto Futuro 2 é um parque urbano com lazer, contemplação e eventos culturais, localizado no bairro do Reduto, em Belém do Pará.",
+      "audioPath": "audios\\speech_e42b8144d5.wav",
+      "facialExpression": "smile",
+      "animation": "TalkingOne"
+    }
+  ],
+  "explique mais sobre os horários.": [
+    {
+      "text": "O Porto Futuro 2 abre de segunda a domingo, das 10h às 22h.",
+      "audioPath": "audios\\speech_c4aa659469.wav",
+      "facialExpression": "smile",
+      "animation": "TalkingOne"
+    }
+  ],
+  "albanyu.": [
+    {
+      "text": "Não é possível entrar no Porto Futuro 2 sem autorização, pois é um parque restrito ao público em geral.",
+      "audioPath": "audios\\speech_344a2f15e8.wav",
+      "facialExpression": "smile",
+      "animation": "TalkingOne"
+    }
+  ],
+  "explique mais sobre as atrações.": [
+    {
+      "text": "O Porto Gastronômico é um espaço com vários restaurantes, bares e quiosques de comida típica paraense, oferecendo uma variedade de opções culinárias. O Museu das Amazôn",
+      "audioPath": "audios\\speech_81c528a98e.wav",
+      "facialExpression": "smile",
+      "animation": "TalkingOne"
+    }
+  ],
+  "mítimi, mim, mais sobre o porto futuro.": [
+    {
+      "text": "O Porto Futuro é um parque urbano com lazer e contemplação, localizado no bairro do Reduto, em Belém do Pará. Abre de segunda a domingo, das 10h às 22h, sem",
+      "audioPath": "audios\\speech_a3624ec0a6.wav",
+      "facialExpression": "smile",
+      "animation": "TalkingOne"
+    }
+  ],
+  "patar de...": [
+    {
+      "text": "Ronedo, você é um pata de galinha!",
+      "audioPath": "audios\\speech_1914069a21.wav",
+      "facialExpression": "smile",
+      "animation": "TalkingOne"
+    }
+  ],
+  "guilha, onde fica o banheiro?": [
+    {
+      "text": "O banheiro está localizado próximos à entrada principal do parque, perto dos quiosques de alimentação.",
+      "audioPath": "audios\\speech_94cb7e184a.wav",
+      "facialExpression": "smile",
+      "animation": "TalkingOne"
+    }
+  ],
+  "patágio.": [
+    {
+      "text": "Não, não é pra patagio, pois não é uma praia.",
+      "audioPath": "audios\\speech_0fbaf2bacb.wav",
+      "facialExpression": "smile",
+      "animation": "TalkingOne"
+    }
+  ],
+  "e diga onde fica os banheiros.": [
+    {
+      "text": "Os banheiros estão próximos à entrada principal do parque, na Avenida Visconde de Souza Franco, conhecida como Doca.",
+      "audioPath": "audios\\speech_ae24b5d116.wav",
+      "facialExpression": "smile",
+      "animation": "TalkingOne"
+    }
+  ],
+  "ao seu nome.": [
+    {
+      "text": "Eu sou Ronedo, assistente virtual do Porto Futuro 2 em Belém do Pará.",
+      "audioPath": "audios\\speech_29fb5e0c8c.wav",
+      "facialExpression": "smile",
+      "animation": "TalkingOne"
+    }
+  ],
+  "teixe.": [
+    {
+      "text": "Não, não é praia ou banho no rio.",
+      "audioPath": "audios\\speech_0eceecaf9a.wav",
+      "facialExpression": "smile",
+      "animation": "TalkingOne"
+    }
+  ],
+  "explique sobre os horários.": [
+    {
+      "text": "O Porto Futuro 2 abre de segunda a domingo, das 10 horas às 22 horas.",
+      "audioPath": "audios\\speech_6da91b25b0.wav",
+      "facialExpression": "smile",
+      "animation": "TalkingOne"
+    }
+  ],
+  "tire um código e até me olhar, viu?": [
+    {
+      "text": "Não, não é praia e não pode tomar banho no rio.",
+      "audioPath": "audios\\speech_bf703b766e.wav",
+      "facialExpression": "smile",
+      "animation": "TalkingOne"
+    }
+  ],
+  "e me falo que não pode tomar o banho.": [
+    {
+      "text": "Não é possível tomar banho no rio, pois não é uma área de água potável.",
+      "audioPath": "audios\\speech_9b5f021173.wav",
+      "facialExpression": "smile",
+      "animation": "TalkingOne"
+    }
+  ],
+  "lá boataj": [
+    {
+      "text": "Não, não é praia, não pode tomar banho no rio.",
+      "audioPath": "audios\\speech_5b65f80f19.wav",
+      "facialExpression": "smile",
+      "animation": "TalkingOne"
+    }
+  ],
+  "e tu colocou a cara para te segurar?": [
+    {
+      "text": "Não, não posso colocar a cara para te segurar, pois é uma prática insegura e potencialmente perigosa.",
+      "audioPath": "audios\\speech_2dbb0a3e3b.wav",
+      "facialExpression": "smile",
+      "animation": "TalkingOne"
+    }
+  ],
+  "chamar a polícia.": [
+    {
+      "text": "Não, não chame a polícia no Porto Futuro 2.",
+      "audioPath": "audios\\speech_38a92000b3.wav",
+      "facialExpression": "smile",
+      "animation": "TalkingOne"
+    }
+  ],
+  "salam aladou!": [
+    {
+      "text": "Não, não é um restaurante ou quiosque de comida, mas sim uma fonte interativa com jatos de água e luzes coloridas.",
+      "audioPath": "audios\\speech_c70794addd.wav",
+      "facialExpression": "smile",
+      "animation": "TalkingOne"
+    }
+  ],
+  "fala-se a que seda com o vítico, naquele dia.": [
+    {
+      "text": "Não é possível entrar no Porto Futuro 2 para se envolver em atividades ilegais ou antisociais.",
+      "audioPath": "audios\\speech_23d9fbf128.wav",
+      "facialExpression": "smile",
+      "animation": "TalkingOne"
+    }
+  ],
+  "e que... e que... e que...": [
+    {
+      "text": "O Porto Futuro 2 é um parque urbano de lazer e contemplação, com entrada gratuita, aberto de segunda a domingo, das 10 às 22 horas.",
+      "audioPath": "audios\\speech_77e45ce8c0.wav",
+      "facialExpression": "smile",
+      "animation": "TalkingOne"
+    }
+  ]
+}

@@ -1,73 +1,107 @@
-import { useRef } from "react";
+import { useState } from "react";
 import { useSpeech } from "../hooks/useSpeech";
 
-export const ChatInterface = ({ hidden, ...props }) => {
-  const input = useRef();
-  const { tts, loading, message, startRecording, stopRecording, recording } = useSpeech();
+const quickActions = [
+  { 
+    emoji: "🍔", 
+    label: "Alimentação", 
+    question: "O que tem para comer e beber aqui?",
+    color: "from-orange-400 to-red-400"
+  },
 
-  const sendMessage = () => {
-    const text = input.current.value;
-    if (!loading && !message) {
-      tts(text);
-      input.current.value = "";
-    }
+  { 
+    emoji: "📸", 
+    label: "Atrações", 
+    question: "Quais são as principais atrações do local?",
+    color: "from-green-400 to-emerald-400"
+  },
+
+  { 
+    emoji: "ℹ️", 
+    label: "Informações", 
+    question: "Me conte sobre o Porto Futuro",
+    color: "from-teal-400 to-cyan-400"
+  },
+  
+  { 
+    emoji: "🎭", 
+    label: "Eventos", 
+    question: "Quais eventos estão acontecendo hoje?",
+    color: "from-rose-400 to-pink-400"
+  },
+];
+
+export const ChatInterface = () => {
+  const { sendMessage, loading } = useSpeech();
+  const [activeButton, setActiveButton] = useState(null);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+
+  const handleQuickAction = (action, index) => {
+    setActiveButton(index);
+    sendMessage(action.question);
+    setIsDropdownOpen(false);
+    setTimeout(() => setActiveButton(null), 2000);
   };
-  if (hidden) {
-    return null;
-  }
+
+  const toggleDropdown = () => {
+    setIsDropdownOpen(!isDropdownOpen);
+  };
 
   return (
-    <div className="fixed top-0 left-0 right-0 bottom-0 z-10 flex justify-between p-4 flex-col pointer-events-none">
-      <div className="self-start backdrop-blur-md bg-white bg-opacity-50 p-4 rounded-lg">
-        <h1 className="font-black text-xl text-gray-700">Digital Human</h1>
-        <p className="text-gray-600">
-          {loading ? "Loading..." : "Type a message and press enter to chat with the AI."}
-        </p>
+    <>
+      {/* Header Flutuante */}
+      <div className="chat-header">
+        <div className="avatar-indicator">
+          <div className="pulse-dot"></div>
+          <span className="avatar-name"> Assistente Virtual</span>
+        </div>
+        <div className="location-tag">
+          <span className="location-icon">📍</span>
+          <span>Porto Futuro 2 - Belém</span>
+        </div>
       </div>
-      <div className="w-full flex flex-col items-end justify-center gap-4"></div>
-      <div className="flex items-center gap-2 pointer-events-auto max-w-screen-sm w-full mx-auto">
-        <button
-          onClick={recording ? stopRecording : startRecording}
-          className={`bg-gray-500 hover:bg-gray-600 text-white p-4 px-4 font-semibold uppercase rounded-md ${
-            recording ? "bg-red-500 hover:bg-red-600" : ""
-          } ${loading || message ? "cursor-not-allowed opacity-30" : ""}`}
+
+      {/* Botão Principal de Menu Suspenso */}
+      <div className="dropdown-container">
+        <button 
+          className={`dropdown-toggle ${isDropdownOpen ? 'open' : ''} ${loading ? 'loading' : ''}`}
+          onClick={toggleDropdown}
+          disabled={loading}
         >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-            strokeWidth={1.5}
-            stroke="currentColor"
-            className="w-6 h-6"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M12 18.75a6 6 0 0 0 6-6v-1.5m-6 7.5a6 6 0 0 1-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 0 1-3-3V4.5a3 3 0 1 1 6 0v8.25a3 3 0 0 1-3 3Z"
-            />
-          </svg>
+          <span className="toggle-icon">💬</span>
+          <span className="toggle-text">Como posso ajudar?</span>
+          <span className={`toggle-arrow ${isDropdownOpen ? 'rotate' : ''}`}>▼</span>
         </button>
 
-        <input
-          className="w-full placeholder:text-gray-800 placeholder:italic p-4 rounded-md bg-opacity-50 bg-white backdrop-blur-md"
-          placeholder="Type a message..."
-          ref={input}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              sendMessage();
-            }
-          }}
-        />
-        <button
-          disabled={loading || message}
-          onClick={sendMessage}
-          className={`bg-gray-500 hover:bg-gray-600 text-white p-4 px-10 font-semibold uppercase rounded-md ${
-            loading || message ? "cursor-not-allowed opacity-30" : ""
-          }`}
-        >
-          Send
-        </button>
+        {/* Menu Dropdown */}
+        {isDropdownOpen && (
+          <div className="dropdown-menu">
+            <div className="dropdown-header">
+              <h3 className="dropdown-title">Escolha uma opção</h3>
+              <p className="dropdown-subtitle">Respostas rápidas disponíveis</p>
+            </div>
+            
+            <div className="dropdown-items">
+              {quickActions.map((action, index) => (
+                <button
+                  key={index}
+                  className={`dropdown-item ${activeButton === index ? 'active' : ''}`}
+                  onClick={() => handleQuickAction(action, index)}
+                  disabled={loading}
+                >
+                  <span className={`item-gradient bg-gradient-to-r ${action.color}`}></span>
+                  <span className="item-emoji">{action.emoji}</span>
+                  <div className="item-content">
+                    <span className="item-label">{action.label}</span>
+                    <span className="item-question">{action.question}</span>
+                  </div>
+                  <span className="item-arrow">→</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
-    </div>
+    </>
   );
 };
