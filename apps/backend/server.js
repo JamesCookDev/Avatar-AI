@@ -1,3 +1,4 @@
+import { createClient } from '@supabase/supabase-js';
 import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
@@ -10,6 +11,7 @@ import { lipSync } from "./modules/rhubarbLipSync.mjs";
 import { convertAudioToText } from "./modules/whisper.mjs"; 
 import kokoro from "./modules/kokoro.mjs";
 import { streamResponse } from "./modules/localLLM.mjs";
+import { invalidateCache as invalidateAICache, clearAllCache as clearAllAICache } from "./modules/aiConfig.mjs";
 
 dotenv.config();
 
@@ -146,11 +148,14 @@ async function warmUpModels() {
 }
 
 // 🆕 FUNÇÃO AUXILIAR: Processa texto e gera áudio/lipsync
-async function processTextToSpeech(userMessage, requestId, startTime) {
+async function processTextToSpeech(userMessage, requestId, startTime, tenantId = null) {
   const log = createLogger(requestId, startTime);
 
+  // Cache key inclui tenantId para separar respostas por cliente  
+  const cacheKey = tenantId ? `${tenantId}:${userMessage.toLowerCase()}` : userMessage.toLowerCase();
+
   // Cache check
-  if (audioCache.has(userMessage.toLowerCase())) {
+  if (audioCache.has(cacheKey)) {
       log("⚡", "CACHE HIT! Verificando arquivos...");
       const cachedData = audioCache.get(userMessage.toLowerCase());
       
@@ -167,14 +172,14 @@ async function processTextToSpeech(userMessage, requestId, startTime) {
         }
       } else {
         log("⚠️", "Arquivos do cache não encontrados. Regenerando...");
-        audioCache.delete(userMessage.toLowerCase());
+        audioCache.delete(cacheKey);
         saveCache();
       }
   }
 
-  // Stream IA
-  log("🧠", "Iniciando Llama (Streaming)...");
-  const stream = await streamResponse({ question: userMessage });
+  // Stream IA (com config dinâmica por tenant)
+  log("🧠", `Iniciando Llama (Streaming)... ${tenantId ? `Tenant: ${tenantId}` : 'Config padrão'}`);
+  const stream = await streamResponse({ question: userMessage, tenantId });
   
   let fullResponse = "";
   
@@ -229,8 +234,8 @@ async function processTextToSpeech(userMessage, requestId, startTime) {
       animation: "TalkingOne"
   }];
   
-  // Salva no cache
-  audioCache.set(userMessage.toLowerCase(), cacheResults);
+  // Salva no cache (com tenantId)
+  audioCache.set(cacheKey, cacheResults);
   saveCache();
   
   // 🧹 Verifica se precisa limpar
@@ -257,6 +262,11 @@ app.post("/sts", async (req, res) => {
   try {
     log("🔌", "Requisição STS recebida");
     const base64Audio = req.body.audio;
+    const tenantId = req.body.tenantId || req.headers['x-tenant-id'] || null;
+    
+    if (tenantId) {
+      log("🏢", `Tenant: ${tenantId}`);
+    }
     
     if (!base64Audio) {
         log("⚠️", "Áudio vazio");
@@ -281,8 +291,8 @@ app.post("/sts", async (req, res) => {
     
     log("🗣️", `Texto: "${userMessage}"`);
 
-    // 2. Processa (LLM + TTS + LipSync)
-    const results = await processTextToSpeech(userMessage, requestId, startTime);
+    // 2. Processa (LLM + TTS + LipSync) com config do tenant
+    const results = await processTextToSpeech(userMessage, requestId, startTime, tenantId);
     
     res.json({ messages: results });
 
@@ -302,6 +312,11 @@ app.post("/text", async (req, res) => {
   try {
     log("🔌", "Requisição TEXT recebida");
     const userMessage = req.body.text;
+    const tenantId = req.body.tenantId || req.headers['x-tenant-id'] || null;
+    
+    if (tenantId) {
+      log("🏢", `Tenant: ${tenantId}`);
+    }
     
     if (!userMessage || typeof userMessage !== 'string') {
         log("⚠️", "Texto inválido");
@@ -310,8 +325,8 @@ app.post("/text", async (req, res) => {
     
     log("💬", `Texto: "${userMessage}"`);
 
-    // Processa (LLM + TTS + LipSync)
-    const results = await processTextToSpeech(userMessage, requestId, startTime);
+    // Processa (LLM + TTS + LipSync) com config do tenant
+    const results = await processTextToSpeech(userMessage, requestId, startTime, tenantId);
     
     res.json({ messages: results });
 
@@ -337,6 +352,28 @@ app.get("/stats", (req, res) => {
     uptime: process.uptime(),
     memory: process.memoryUsage()
   });
+});
+
+// 🔄 Webhook para invalidar cache da IA (chamado pelo CMS quando config muda)
+app.post("/webhook/ai-config-updated", (req, res) => {
+  const { tenantId, secret } = req.body;
+  
+  // Validação simples (você pode melhorar com assinatura HMAC)
+  const expectedSecret = process.env.WEBHOOK_SECRET || 'avatar-ai-webhook';
+  if (secret !== expectedSecret) {
+    console.warn('⚠️ [Webhook] Tentativa com secret inválido');
+    return res.status(401).json({ error: 'Invalid secret' });
+  }
+  
+  if (tenantId) {
+    invalidateAICache(tenantId);
+    console.log(`🔄 [Webhook] Cache invalidado para tenant: ${tenantId}`);
+  } else {
+    clearAllAICache();
+    console.log('🔄 [Webhook] Todo o cache de IA invalidado');
+  }
+  
+  res.json({ success: true, message: 'Cache invalidated' });
 });
 
 // 🧹 FUNÇÃO: Verificar e limpar se exceder limite
@@ -451,16 +488,65 @@ app.post("/cleanup/all", (req, res) => {
   }
 });
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+// ==========================================
+// 🔌 INTEGRAÇÃO AITI MANAGER
+// ==========================================
+
+const CMS_URL = process.env.SUPABASE_URL; // URL das Edge Functions
+const TOTEM_API_KEY = process.env.TOTEM_API_KEY;
+const ANON_KEY = process.env.SUPABASE_ANON_KEY;
+
+if (CMS_URL && TOTEM_API_KEY) {
+  console.log("🔌 [AITI] Conectando ao AITI MANAGER...");
+
+  // Heartbeat a cada 30s via Edge Function
+  setInterval(async () => {
+    try {
+      const response = await fetch(`${CMS_URL}/totem-heartbeat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-totem-api-key': TOTEM_API_KEY,
+          'apikey': ANON_KEY,
+        },
+        body: JSON.stringify({
+          is_speaking: false, // Atualizar conforme estado real
+          status_details: {
+            uptime: process.uptime(),
+            memory_usage: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+            version: '1.0.0',
+          },
+        }),
+      });
+
+      if (response.ok) {
+        const time = new Date().toLocaleTimeString();
+        console.log(`[${time}] 💓 Heartbeat OK`);
+      } else {
+        const err = await response.json();
+        console.error("❌ Heartbeat erro:", err.error);
+      }
+    } catch (err) {
+      console.error("⚠️ Heartbeat falhou:", err.message);
+    }
+  }, 30000);
+
+} else {
+  console.log("⚠️ [AITI] Offline: Configure SUPABASE_URL e TOTEM_API_KEY no .env");
+}
+
+
+// ==========================================
 // INICIALIZAÇÃO
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ==========================================
 
 app.listen(PORT, async () => {
   console.log(`
 ╔═══════════════════════════════════════════════╗
-║  🤖 Avatar AI - Porto Futuro 2              ║
-║  📍 Belém, Pará                              ║
-║  🌐 http://localhost:${PORT}                    ║
+║  🤖 Avatar AI - Porto Futuro 2                ║
+║  📍 Belém, Pará                               ║
+║  🌐 http://localhost:${PORT}                  ║
 ╚═══════════════════════════════════════════════╝
   `);
   

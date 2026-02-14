@@ -3,6 +3,17 @@ import { useEffect, useRef } from "react";
 import { Avatar } from "./Avatar";
 import * as THREE from "three";
 
+// Configuração de tema visual
+const THEME = {
+  environment: 'city',
+  bgColor: '#0f3460',
+  floorColor: '#1a1a2e',
+  ambientIntensity: 0.4,
+  accentColor1: '#4a90ff',
+  accentColor2: '#ff6b9d',
+  sparkleColor: '#4a90ff',
+};
+
 export const Scenario = () => {
   const cameraControls = useRef();
   
@@ -22,8 +33,8 @@ export const Scenario = () => {
         maxPolarAngle={Math.PI / 2}
       />
 
-      {/* Ambiente e Iluminação */}
-      <Environment preset="city" />
+      {/* Ambiente */}
+      <Environment preset={THEME.environment} />
       
       {/* Céu Gradiente */}
       <Sky
@@ -33,8 +44,8 @@ export const Scenario = () => {
         azimuth={0.25}
       />
 
-      {/* Luzes Principais */}
-      <ambientLight intensity={0.4} />
+      {/* Intensidade da luz baseada no tema */}
+      <ambientLight intensity={THEME.ambientIntensity} />
       
       {/* Luz Principal (Key Light) */}
       <directionalLight
@@ -84,44 +95,44 @@ export const Scenario = () => {
         color="#000000"
       />
 
-      {/* Chão com Material Refletivo */}
+      {/* Chão */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]} receiveShadow>
         <planeGeometry args={[20, 20]} />
         <meshStandardMaterial 
-          color="#1a1a2e"
+          color={THEME.floorColor}
           roughness={0.3}
           metalness={0.8}
           envMapIntensity={0.5}
         />
       </mesh>
 
-      {/* Parede de Fundo com Gradiente */}
+      {/* Parede de Fundo */}
       <mesh position={[0, 4, -5]} receiveShadow>
         <planeGeometry args={[20, 12]} />
         <meshStandardMaterial 
-          color="#0f3460"
+          color={THEME.bgColor}
           roughness={0.8}
           metalness={0.2}
         />
       </mesh>
 
-      {/* Elementos Decorativos - Partículas Flutuantes */}
+      {/* Partículas */}
       <Sparkles
         count={50}
         scale={10}
         size={2}
         speed={0.3}
         opacity={0.4}
-        color="#4a90ff"
+        color={THEME.sparkleColor}
       />
 
-      {/* Painéis Laterais Futuristas */}
+      {/* Painéis Laterais */}
       <group position={[-4, 1.5, 0]}>
         <mesh castShadow>
           <boxGeometry args={[0.1, 3, 2]} />
           <meshStandardMaterial 
             color="#16213e"
-            emissive="#4a90ff"
+            emissive={THEME.accentColor1}
             emissiveIntensity={0.3}
             roughness={0.2}
             metalness={0.9}
@@ -134,7 +145,7 @@ export const Scenario = () => {
           <boxGeometry args={[0.1, 3, 2]} />
           <meshStandardMaterial 
             color="#16213e"
-            emissive="#ff6b9d"
+            emissive={THEME.accentColor2}
             emissiveIntensity={0.3}
             roughness={0.2}
             metalness={0.9}
@@ -146,8 +157,8 @@ export const Scenario = () => {
       <mesh position={[0, 3.5, -2]} rotation={[0, 0, Math.PI / 4]}>
         <torusGeometry args={[1.5, 0.05, 16, 100]} />
         <meshStandardMaterial 
-          color="#4a90ff"
-          emissive="#4a90ff"
+          color={THEME.accentColor1}
+          emissive={THEME.accentColor1}
           emissiveIntensity={0.5}
           roughness={0.1}
           metalness={1}
@@ -157,8 +168,8 @@ export const Scenario = () => {
       <mesh position={[0, 3.5, -2]} rotation={[0, 0, -Math.PI / 4]}>
         <torusGeometry args={[1.8, 0.04, 16, 100]} />
         <meshStandardMaterial 
-          color="#ff6b9d"
-          emissive="#ff6b9d"
+          color={THEME.accentColor2}
+          emissive={THEME.accentColor2}
           emissiveIntensity={0.4}
           roughness={0.1}
           metalness={1}

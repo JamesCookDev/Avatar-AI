@@ -16,7 +16,7 @@ function App() {
         <Scenario />
       </Canvas>
 
-      {/* Interface de Chat sobreposta ao Canvas */}
+      {/* Interface de interação com o Avatar */}
       <ChatInterface />
     </>
   );
