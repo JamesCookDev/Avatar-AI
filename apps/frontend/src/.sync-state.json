@@ -1,0 +1,41 @@
+{
+  "files": {
+    "App.jsx": {
+      "version": "3.1.0",
+      "updated_at": "2026-02-20T21:09:25.260Z"
+    },
+    "main.jsx": {
+      "version": "1.0.0",
+      "updated_at": "2026-02-20T20:44:02.617Z"
+    },
+    "index.css": {
+      "version": "1.1.0",
+      "updated_at": "2026-02-20T20:44:03.847Z"
+    },
+    "hooks/useSpeech.js": {
+      "version": "2.1.0",
+      "updated_at": "2026-02-20T20:44:04.963Z"
+    },
+    "hooks/useCMSConfig.js": {
+      "version": "1.2.0",
+      "updated_at": "2026-02-20T20:44:06.506Z"
+    },
+    "components/Avatar.jsx": {
+      "version": "1.5.0",
+      "updated_at": "2026-02-20T20:44:07.910Z"
+    },
+    "components/ChatInterface.jsx": {
+      "version": "1.3.0",
+      "updated_at": "2026-02-20T20:44:09.126Z"
+    },
+    "components/Scenario.jsx": {
+      "version": "1.2.0",
+      "updated_at": "2026-02-20T20:44:10.341Z"
+    },
+    "hooks/useSpeech.jsx": {
+      "version": "2.2.0",
+      "updated_at": "2026-02-20T21:09:26.488Z"
+    }
+  },
+  "last_sync": "2026-02-20T23:13:54.092Z"
+}

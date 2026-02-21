@@ -1,212 +1,160 @@
 /**
- * Hook para sincronizar configurações do CMS com o Avatar local.
+ * useCMSConfig — Polling + Supabase Realtime (Live Preview do Hub)
+ * 
+ * Variáveis de ambiente necessárias no .env local:
+ *   VITE_CMS_API_URL=https://<project>.supabase.co/functions/v1
+ *   VITE_TOTEM_API_KEY=<api_key do dispositivo no Hub>
+ *   VITE_SUPABASE_ANON_KEY=<anon key do projeto>
+ *   VITE_TOTEM_DEVICE_ID=<id do dispositivo — para Realtime>
+ *   VITE_CMS_POLL_INTERVAL=15000   (opcional, padrão 15s)
  */
-
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { createClient } from '@supabase/supabase-js';
 
-// CONFIGURAÇÃO
-const CMS_API_URL = import.meta.env.VITE_CMS_API_URL || 'https://xdvnwzgsyzghfzkumcmg.supabase.co/functions/v1';
-const API_KEY = import.meta.env.VITE_TOTEM_API_KEY;
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
-const POLL_INTERVAL = parseInt(import.meta.env.VITE_CMS_POLL_INTERVAL) || 5000;
+const CMS_API_URL    = import.meta.env.VITE_CMS_API_URL    || '';
+const API_KEY        = import.meta.env.VITE_TOTEM_API_KEY  || '';
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+const DEVICE_ID      = import.meta.env.VITE_TOTEM_DEVICE_ID || '';
+const POLL_INTERVAL  = parseInt(import.meta.env.VITE_CMS_POLL_INTERVAL) || 15000;
 
-// CONFIGURAÇÃO PADRÃO
-const DEFAULT_CONFIG = {
-  colors: {
-    primary: '#ffffff',
-    secondary: '#cccccc',
-    shirt: '#2563EB',
-    pants: '#1F2937',
-    shoes: '#111827',
-  },
-  textures: {
-    logo: null,
-    baseTexture: null,
-    roughnessMap: null,
-  },
-  material: {
-    type: 'cotton',
-    roughness: 0.5,
-    metalness: 0.0,
-  },
-  // Configuração de UI
-  ui: {
-    title: 'Assistente Virtual',
-    subtitle: 'Totem Interativo',
-    cta_text: 'Como posso ajudar?',
-    menu_title: 'Escolha uma opção',
-    menu_subtitle: 'Respostas rápidas disponíveis',
-    quick_actions: [
-      { label: 'Informações', icon: 'ℹ️', prompt: 'Quem é você?', color: 'from-teal-400 to-cyan-400' },
-    ],
-  },
-};
+// Extrair URL base do Supabase a partir da URL da edge function
+const SUPABASE_URL = CMS_API_URL.replace('/functions/v1', '');
+
+// Cliente Supabase para Realtime (Broadcast)
+let supabaseClient = null;
+function getSupabaseClient() {
+  if (!supabaseClient && SUPABASE_URL && SUPABASE_ANON_KEY) {
+    supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  }
+  return supabaseClient;
+}
 
 export function useCMSConfig(options = {}) {
-  const { avatarId = null, pollInterval = POLL_INTERVAL } = options;
-  
-  const [config, setConfig] = useState(DEFAULT_CONFIG);
+  const { pollInterval = POLL_INTERVAL } = options;
+
+  const [ui, setUi] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isOffline, setIsOffline] = useState(false);
-  const lastUpdatedRef = useRef(null);
-  const abortControllerRef = useRef(null);
-  const retryCountRef = useRef(0);
+  const [isLive, setIsLive] = useState(false); // true quando conectado via Realtime
 
-  const fetchConfig = useCallback(async (isInitial = false) => {
-    if (!API_KEY) {
-      setConfig(DEFAULT_CONFIG);
-      setIsOffline(true);
+  const abortRef = useRef(null);
+  const lastHashRef = useRef('');
+
+  // ──────────────────────────────────────────────────────────────────
+  // 1. FETCH polling — busca a config completa na edge function
+  // ──────────────────────────────────────────────────────────────────
+  const fetchConfig = useCallback(async () => {
+    if (!CMS_API_URL || !API_KEY) {
+      console.warn('[CMS] VITE_CMS_API_URL ou VITE_TOTEM_API_KEY não configurados.');
       setLoading(false);
       return;
     }
 
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
-    abortControllerRef.current = new AbortController();
+    if (abortRef.current) abortRef.current.abort();
+    abortRef.current = new AbortController();
 
     try {
-      const url = new URL(`${CMS_API_URL}/totem-config`);
-      if (avatarId) url.searchParams.set('avatar_id', avatarId);
-
-      const response = await fetch(url.toString(), {
+      const res = await fetch(`${CMS_API_URL}/totem-config`, {
         method: 'GET',
         headers: {
           'x-totem-api-key': API_KEY,
           'apikey': SUPABASE_ANON_KEY,
           'Content-Type': 'application/json',
         },
-        signal: abortControllerRef.current.signal,
+        signal: abortRef.current.signal,
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `HTTP ${response.status}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      const data = await res.json();
+      const newUi = data?.ui || data?.config?.ui || {};
+
+      const hash = JSON.stringify(newUi);
+      if (hash !== lastHashRef.current) {
+        lastHashRef.current = hash;
+        setUi(newUi);
       }
 
-      const data = await response.json();
-      
-      if (data.success && data.config) {
-        // 🆕 Busca configuração de UI do CMS (ui_settings ou ui)
-        const uiConfig = data.ui || data.config.ui_settings || data.config.ui || DEFAULT_CONFIG.ui;
-        
-        const newConfig = {
-          colors: data.colors || data.config.colors || DEFAULT_CONFIG.colors,
-          textures: data.textures || data.config.textures || DEFAULT_CONFIG.textures,
-          material: data.material || data.config.material || DEFAULT_CONFIG.material,
-          ui: {
-            ...DEFAULT_CONFIG.ui,
-            ...uiConfig,
-          },
-        };
-        
-        setConfig(newConfig);
-        lastUpdatedRef.current = data.config.updated_at || Date.now();
-        
-        setError(null);
-        setIsOffline(false);
-        retryCountRef.current = 0;
-      }
+      setError(null);
+      setIsOffline(false);
     } catch (err) {
-      if (err.name === 'AbortError') return;
-      // Mantive apenas o erro crítico, removi avisos menores
-      retryCountRef.current++;
-      if (retryCountRef.current >= 3) {
-        setConfig(DEFAULT_CONFIG);
+      if (err.name !== 'AbortError') {
+        console.error('[CMS] Falha na conexão:', err.message);
         setIsOffline(true);
-        setError(null); 
-      } else {
         setError(err.message);
       }
     } finally {
       setLoading(false);
     }
-  }, [avatarId]);
+  }, []);
 
-  // Polling automático (SILENCIOSO)
+  // Polling inicial + intervalo
   useEffect(() => {
-    fetchConfig(true);
-
-    const intervalId = setInterval(() => {
-      if (!isOffline) {
-        // Log removido aqui para limpar o console
-        fetchConfig(false);
-      }
+    fetchConfig();
+    const id = setInterval(() => {
+      if (!isOffline) fetchConfig();
     }, pollInterval);
-
     return () => {
-      clearInterval(intervalId);
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
+      clearInterval(id);
+      abortRef.current?.abort();
     };
   }, [fetchConfig, pollInterval, isOffline]);
 
-  // Tentar reconectar (SILENCIOSO)
+  // ──────────────────────────────────────────────────────────────────
+  // 2. REALTIME — canal live-preview:{deviceId} (Supabase Broadcast)
+  //    O Hub envia via Realtime quando o editor está aberto.
+  //    Isso garante atualização instantânea sem esperar o polling.
+  // ──────────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!isOffline) return;
-    const reconnectId = setInterval(() => {
-      retryCountRef.current = 0;
-      setIsOffline(false);
-      fetchConfig(true);
-    }, 30000);
-    return () => clearInterval(reconnectId);
-  }, [isOffline, fetchConfig]);
+    if (!DEVICE_ID) {
+      console.warn('[Realtime] VITE_TOTEM_DEVICE_ID não configurado — Realtime desativado.');
+      return;
+    }
 
-  const refresh = useCallback(() => {
-    retryCountRef.current = 0;
-    setIsOffline(false);
-    fetchConfig(true);
-  }, [fetchConfig]);
+    const supabase = getSupabaseClient();
+    if (!supabase) {
+      console.warn('[Realtime] Não foi possível criar cliente Supabase.');
+      return;
+    }
 
-  const colors = config?.colors || DEFAULT_CONFIG.colors;
-  const textures = config?.textures || DEFAULT_CONFIG.textures;
-  const material = config?.material || DEFAULT_CONFIG.material;
-  const ui = config?.ui || DEFAULT_CONFIG.ui;
+    console.log(`[Realtime] Inscrevendo no canal live-preview:${DEVICE_ID}`);
+
+    const channel = supabase
+      .channel(`live-preview:${DEVICE_ID}`)
+      .on('broadcast', { event: 'ui-update' }, ({ payload }) => {
+        // Hub envia craft_blocks (JSON string dos nós Craft.js)
+        const craftBlocks = payload?.craft_blocks;
+        if (!craftBlocks) return;
+        if (craftBlocks !== lastHashRef.current) {
+          lastHashRef.current = craftBlocks;
+          setUi(prev => ({ ...prev, _live_craft_blocks: craftBlocks, _live_ts: payload.ts }));
+          console.log('[Realtime] ✅ craft_blocks atualizados via Realtime!');
+        }
+      })
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          setIsLive(true);
+          console.log('[Realtime] ✅ Canal conectado!');
+        } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+          setIsLive(false);
+          console.warn('[Realtime] Canal desconectado:', status);
+        }
+      });
+
+    return () => {
+      supabase.removeChannel(channel);
+      setIsLive(false);
+    };
+  }, []);
 
   return {
-    config,
-    // Expõe configuração de UI
-    ui: {
-      title: ui.title || DEFAULT_CONFIG.ui.title,
-      subtitle: ui.subtitle || DEFAULT_CONFIG.ui.subtitle,
-      cta_text: ui.cta_text || DEFAULT_CONFIG.ui.cta_text,
-      menu_title: ui.menu_title || DEFAULT_CONFIG.ui.menu_title,
-      menu_subtitle: ui.menu_subtitle || DEFAULT_CONFIG.ui.menu_subtitle,
-      quick_actions: ui.quick_actions || DEFAULT_CONFIG.ui.quick_actions,
-    },
-    colors: {
-      primary: colors.primary || DEFAULT_CONFIG.colors.primary,
-      secondary: colors.secondary || DEFAULT_CONFIG.colors.secondary,
-      shirt: colors.shirt || colors.primary || DEFAULT_CONFIG.colors.shirt,
-      pants: colors.pants || DEFAULT_CONFIG.colors.pants,
-      shoes: colors.shoes || DEFAULT_CONFIG.colors.shoes,
-    },
-    textures: {
-      logo: textures.logo || null,
-      baseTexture: textures.baseTexture || null,
-      roughnessMap: textures.roughnessMap || null,
-    },
-    material: {
-      type: material.type || 'cotton',
-      roughness: material.roughness ?? 0.5,
-      metalness: material.metalness ?? 0.0,
-    },
+    ui,
     loading,
     error,
-    isConnected: !isOffline && !error && !loading,
     isOffline,
-    refresh,
+    isLive,        // ← novo: true quando Realtime está ativo
+    isConnected: !isOffline && !error,
+    refetch: fetchConfig,
   };
 }
-
-export function useCMSListener(callback) {
-  useEffect(() => {
-    const handler = (event) => callback(event.detail);
-    window.addEventListener('cms-config-updated', handler);
-    return () => window.removeEventListener('cms-config-updated', handler);
-  }, [callback]);
-}
-
-export default useCMSConfig;

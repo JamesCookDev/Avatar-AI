@@ -493,7 +493,7 @@ app.post("/cleanup/all", (req, res) => {
 // 🔌 INTEGRAÇÃO AITI MANAGER
 // ==========================================
 
-const CMS_URL = process.env.SUPABASE_URL; // URL das Edge Functions
+const CMS_URL = process.env.SUPABASE_URL + '/functions/v1'; // URL das Edge Functions
 const TOTEM_API_KEY = process.env.TOTEM_API_KEY;
 const ANON_KEY = process.env.SUPABASE_ANON_KEY;
 

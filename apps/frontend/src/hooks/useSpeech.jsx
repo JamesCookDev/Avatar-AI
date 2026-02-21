@@ -8,11 +8,11 @@ const SpeechContext = createContext();
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 const TENANT_ID = import.meta.env.VITE_TENANT_ID || null;
 
-// 🎚️ AJUSTE DE SENSIBILIDADE (Aumentei para ignorar o ruído de fundo)
-const VOICE_THRESHOLD = 45;   // Antes estava 15 (pegava ruído). Agora 45 (só voz).
-const SILENCE_TIMEOUT = 2000; // Tempo de silêncio para considerar "Fim da frase"
+// 🎚️ AJUSTE DE SENSIBILIDADE
+const VOICE_THRESHOLD = 45;   // 45 = só voz, ignora ruído de fundo
+const SILENCE_TIMEOUT = 2000; // Tempo de silêncio para "Fim da frase"
 const MIN_AUDIO_SIZE = 1500;  // Ignora áudios muito curtos (cliques)
-const PLAYBACK_COOLDOWN = 500;// Tempo extra após o avatar falar
+const PLAYBACK_COOLDOWN = 500;// Delay após avatar falar antes de reabrir mic
 
 export const useSpeech = () => {
   const context = useContext(SpeechContext);
@@ -22,16 +22,16 @@ export const useSpeech = () => {
 
 export const SpeechProvider = ({ children }) => {
   // Estados da UI
-  const [message, setMessage] = useState(null); // Texto que o avatar está falando
-  const [loading, setLoading] = useState(false); // Carregando resposta (Spinning)
-  const [listening, setListening] = useState(false); // Estado visual de "Ouvindo"
+  const [message, setMessage] = useState(null);   // Objeto de mensagem do avatar (audio, lipsync, text)
+  const [loading, setLoading] = useState(false);  // Carregando resposta da IA
+  const [listening, setListening] = useState(false); // Microfone ativo / VAD detectou voz
 
-  // Referências (Não causam re-render)
-  const queueRef = useRef([]);      // Fila de frases para falar
-  const isPlayingRef = useRef(false); // O Avatar está falando?
-  const isProcessingRef = useRef(false); // Estamos enviando áudio pro back?
-  
-  // Áudio Refs
+  // Referências (não causam re-render)
+  const queueRef = useRef([]);          // Fila de frases para o avatar falar
+  const isPlayingRef = useRef(false);   // Avatar está falando?
+  const isProcessingRef = useRef(false);// Enviando áudio pro backend?
+
+  // Refs de áudio/VAD
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
   const silenceTimerRef = useRef(null);
@@ -43,28 +43,26 @@ export const SpeechProvider = ({ children }) => {
   // 1. GERENCIADOR DE FILA (FALA DO AVATAR)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const processQueue = () => {
-    // Se já está falando ou não tem nada na fila, aborta
     if (isPlayingRef.current || queueRef.current.length === 0) return;
 
     const nextMessage = queueRef.current.shift();
-    
-    // 🔒 BLOQUEIO: Avatar começa a falar -> Microfone fecha
-    isPlayingRef.current = true; 
+
+    // 🔒 Bloqueia microfone enquanto o avatar fala
+    isPlayingRef.current = true;
     setMessage(nextMessage);
-    
-    console.log("🤖 Avatar falando:", nextMessage.text.substring(0, 30) + "...");
+
+    console.log("🤖 Avatar falando:", nextMessage.text?.substring(0, 40) + "...");
   };
 
-  // Chamado pelo componente <Avatar /> quando o áudio termina
+  // Chamado pelo <Avatar /> quando o áudio termina
   const onMessagePlayed = () => {
     setMessage(null);
-    
-    // Pequeno delay para não abrir o mic instantaneamente (evita ouvir o próprio eco)
+
     setTimeout(() => {
       isPlayingRef.current = false;
       console.log("✅ Avatar terminou. Microfone liberado.");
-      processQueue(); // Verifica se tem mais frases
-    }, PLAYBACK_COOLDOWN); 
+      processQueue(); // Verifica se há mais frases na fila
+    }, PLAYBACK_COOLDOWN);
   };
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -89,17 +87,17 @@ export const SpeechProvider = ({ children }) => {
       reader.onloadend = async () => {
         const base64Audio = reader.result.split(",")[1];
         try {
-            const response = await fetch(`${API_URL}/sts`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ audio: base64Audio, tenantId: TENANT_ID }),
-            });
-            await handleBackendResponse(response);
+          const response = await fetch(`${API_URL}/sts`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ audio: base64Audio, tenantId: TENANT_ID }),
+          });
+          await handleBackendResponse(response);
         } catch (err) {
-            console.error("❌ Erro no Backend:", err);
+          console.error("❌ Erro no Backend (STS):", err);
         } finally {
-            isProcessingRef.current = false;
-            setLoading(false);
+          isProcessingRef.current = false;
+          setLoading(false);
         }
       };
     } catch (error) {
@@ -109,7 +107,7 @@ export const SpeechProvider = ({ children }) => {
     }
   };
 
-  // Envio manual de texto (Chat escrito)
+  // Envio manual de texto (botões de menu / chat escrito)
   const sendMessage = async (text) => {
     if (loading || isPlayingRef.current) return;
     setLoading(true);
@@ -121,7 +119,7 @@ export const SpeechProvider = ({ children }) => {
       });
       await handleBackendResponse(response);
     } catch (error) {
-      console.error(error);
+      console.error("❌ Erro no Backend (TEXT):", error);
     } finally {
       setLoading(false);
     }
@@ -137,35 +135,34 @@ export const SpeechProvider = ({ children }) => {
       try {
         console.log("🎤 Inicializando VAD...");
 
-        // A. SELEÇÃO INTELIGENTE DE MICROFONE (Ignora Steam/Virtual)
-        await navigator.mediaDevices.getUserMedia({ audio: true }); // Pede permissão
+        // A. Seleção inteligente de microfone (ignora Steam/Virtual)
+        await navigator.mediaDevices.getUserMedia({ audio: true });
         const devices = await navigator.mediaDevices.enumerateDevices();
         const mics = devices.filter(d => d.kind === 'audioinput');
-        
-        // Procura mic Realtek/USB e ignora Steam
-        let selectedMic = mics.find(m => 
-            (m.label.toLowerCase().includes('high definition') || 
-             m.label.toLowerCase().includes('realtek') || 
-             m.label.toLowerCase().includes('usb')) &&
-            !m.label.toLowerCase().includes('steam')
+
+        let selectedMic = mics.find(m =>
+          (m.label.toLowerCase().includes('high definition') ||
+           m.label.toLowerCase().includes('realtek') ||
+           m.label.toLowerCase().includes('usb')) &&
+          !m.label.toLowerCase().includes('steam')
         );
-        if (!selectedMic) selectedMic = mics.find(m => !m.label.toLowerCase().includes('steam')); // Fallback
+        if (!selectedMic) selectedMic = mics.find(m => !m.label.toLowerCase().includes('steam'));
 
         const deviceId = selectedMic ? selectedMic.deviceId : 'default';
         console.log(`🎤 Usando Microfone: ${selectedMic ? selectedMic.label : 'Padrão Sistema'}`);
 
-        // B. STREAM REAL
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-            audio: { 
-                deviceId: { exact: deviceId },
-                echoCancellation: false, // Desligado para qualidade
-                noiseSuppression: false, // Desligado para não cortar voz
-                autoGainControl: false 
-            } 
+        // B. Stream real
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            deviceId: { exact: deviceId },
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+          },
         });
         streamRef.current = stream;
 
-        // C. ANALISADOR
+        // C. Analisador de frequência
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         audioContextRef.current = new AudioContext();
         analyserRef.current = audioContextRef.current.createAnalyser();
@@ -173,73 +170,64 @@ export const SpeechProvider = ({ children }) => {
         const source = audioContextRef.current.createMediaStreamSource(stream);
         source.connect(analyserRef.current);
 
-        // D. GRAVADOR
+        // D. MediaRecorder
         mediaRecorderRef.current = new MediaRecorder(stream);
         mediaRecorderRef.current.ondataavailable = (e) => {
-            if (e.data.size > 0) audioChunksRef.current.push(e.data);
+          if (e.data.size > 0) audioChunksRef.current.push(e.data);
         };
         mediaRecorderRef.current.onstop = () => {
-            const blob = new Blob(audioChunksRef.current, { type: "audio/wav" });
-            audioChunksRef.current = [];
-            setListening(false);
-            
-            if (blob.size > MIN_AUDIO_SIZE) {
-                sendAudioToBackend(blob);
-            } else {
-                console.log("🗑️ Áudio descartado (Muito curto/Ruído)");
-            }
+          const blob = new Blob(audioChunksRef.current, { type: "audio/wav" });
+          audioChunksRef.current = [];
+          setListening(false);
+
+          if (blob.size > MIN_AUDIO_SIZE) {
+            sendAudioToBackend(blob);
+          } else {
+            console.log("🗑️ Áudio descartado (muito curto / ruído)");
+          }
         };
 
-        // E. LOOP DE MONITORAMENTO (VAD)
+        // E. Loop de monitoramento (VAD)
         const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
-        
+
         const checkAudioLevel = () => {
-            animationFrame = requestAnimationFrame(checkAudioLevel);
+          animationFrame = requestAnimationFrame(checkAudioLevel);
 
-            // ⛔ BLOQUEIO TOTAL:
-            // Se o Avatar está falando OU o sistema está processando => NÃO ESCUTA NADA
-            if (isPlayingRef.current || isProcessingRef.current || loading) {
-                return; 
+          // ⛔ Bloqueio total: avatar falando ou sistema processando → não ouve
+          if (isPlayingRef.current || isProcessingRef.current || loading) return;
+
+          analyserRef.current.getByteFrequencyData(dataArray);
+          let sum = 0;
+          for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+          const volume = sum / dataArray.length;
+
+          if (volume > VOICE_THRESHOLD) {
+            if (mediaRecorderRef.current.state === "inactive") {
+              console.log("🎙️ Voz detectada! Gravando...");
+              mediaRecorderRef.current.start();
+              setListening(true);
             }
-
-            // Análise de Volume
-            analyserRef.current.getByteFrequencyData(dataArray);
-            let sum = 0;
-            for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
-            const volume = sum / dataArray.length;
-
-            // Lógica de Gatilho
-            if (volume > VOICE_THRESHOLD) {
-                // Voz detectada!
-                if (mediaRecorderRef.current.state === "inactive") {
-                    console.log("🎙️ Voz detectada! Gravando...");
-                    mediaRecorderRef.current.start();
-                    setListening(true);
-                }
-                // Reseta timer de silêncio (usuário continua falando)
-                if (silenceTimerRef.current) {
-                    clearTimeout(silenceTimerRef.current);
-                    silenceTimerRef.current = null;
-                }
-            } else {
-                // Silêncio
-                if (mediaRecorderRef.current.state === "recording" && !silenceTimerRef.current) {
-                    // Inicia contagem para cortar
-                    silenceTimerRef.current = setTimeout(() => {
-                        if (mediaRecorderRef.current.state === "recording") {
-                            console.log("🛑 Silêncio detectado. Parando gravação.");
-                            mediaRecorderRef.current.stop();
-                        }
-                        silenceTimerRef.current = null;
-                    }, SILENCE_TIMEOUT);
-                }
+            if (silenceTimerRef.current) {
+              clearTimeout(silenceTimerRef.current);
+              silenceTimerRef.current = null;
             }
+          } else {
+            if (mediaRecorderRef.current.state === "recording" && !silenceTimerRef.current) {
+              silenceTimerRef.current = setTimeout(() => {
+                if (mediaRecorderRef.current.state === "recording") {
+                  console.log("🛑 Silêncio detectado. Parando gravação.");
+                  mediaRecorderRef.current.stop();
+                }
+                silenceTimerRef.current = null;
+              }, SILENCE_TIMEOUT);
+            }
+          }
         };
 
         checkAudioLevel();
 
       } catch (err) {
-        console.error("❌ Erro fatal no áudio:", err);
+        console.error("❌ Erro fatal no áudio (VAD):", err);
       }
     };
 
@@ -250,6 +238,7 @@ export const SpeechProvider = ({ children }) => {
       if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
       if (audioContextRef.current) audioContextRef.current.close();
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
@@ -258,3 +247,5 @@ export const SpeechProvider = ({ children }) => {
     </SpeechContext.Provider>
   );
 };
+
+export default useSpeech;

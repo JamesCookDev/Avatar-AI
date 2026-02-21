@@ -12,7 +12,7 @@ dotenv.config();
 // CONFIGURAÇÃO
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-const CMS_API_URL = process.env.CMS_API_URL || 'https://fxjszxvhzojhmcloajpt.supabase.co/functions/v1';
+const CMS_API_URL = process.env.CMS_API_URL || 'https://iwqcltmeniotzbowbxzg.supabase.co/functions/v1';
 const API_KEY = process.env.TOTEM_API_KEY;
 const CACHE_TTL = parseInt(process.env.AI_CONFIG_CACHE_TTL) || 60000; // 1 minuto
 

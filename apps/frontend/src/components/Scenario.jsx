@@ -1,180 +1,204 @@
-import { CameraControls, Environment, Sky, ContactShadows, Sparkles } from "@react-three/drei";
+import { CameraControls, Environment, ContactShadows, Sparkles } from "@react-three/drei";
 import { useEffect, useRef } from "react";
 import { Avatar } from "./Avatar";
 import * as THREE from "three";
+import { useCMSConfig } from "../hooks/useCMSConfig";
 
-// Configuração de tema visual
-const THEME = {
-  environment: 'city',
-  bgColor: '#0f3460',
-  floorColor: '#1a1a2e',
-  ambientIntensity: 0.4,
-  accentColor1: '#4a90ff',
-  accentColor2: '#ff6b9d',
-  sparkleColor: '#4a90ff',
-};
-
-export const Scenario = () => {
+export const Scenario = ({ uiOverride } = {}) => {
   const cameraControls = useRef();
   
+  // Aceita uiOverride do App.jsx (SceneBlock) ou usa o CMS padrão
+  const { ui: cmsUi } = useCMSConfig();
+  const ui = uiOverride || cmsUi;
+  
+  // Configurações com fallbacks
+  const canvasConfig = ui?.canvas || {};
+  const envConfig = canvasConfig.environment || {};
+  const bgConfig = canvasConfig.background || {};
+  const cameraConfig = canvasConfig.camera || {};
+  const lightingConfig = canvasConfig.lighting || {};
+  const shadowsConfig = canvasConfig.shadows || {};
+  
+  // Camera inicial
+  const initialLookAt = cameraConfig.initial_look_at || {};
+  const cameraPosition = initialLookAt.position || [0, 1.65, 4];
+  const cameraTarget = initialLookAt.target || [0, 1.5, 0];
+  const smoothTransition = initialLookAt.smooth ?? true;
+  
+  // Controls
+  const controlsConfig = cameraConfig.controls || {};
+  const minDistance = controlsConfig.minDistance ?? 3;
+  const maxDistance = controlsConfig.maxDistance ?? 8;
+  const minPolarAngle = controlsConfig.minPolarAngle ?? Math.PI / 4;
+  const maxPolarAngle = controlsConfig.maxPolarAngle ?? Math.PI / 2;
+
   useEffect(() => {
-    // Posicionamento de câmera mais cinematográfico
-    cameraControls.current.setLookAt(0, 1.65, 4, 0, 1.5, 0, true);
-  }, []);
+    cameraControls.current?.setLookAt(
+      ...cameraPosition,
+      ...cameraTarget,
+      smoothTransition
+    );
+  }, [cameraPosition, cameraTarget, smoothTransition]);
+
+  // Floor config
+  const floorGeometry = envConfig.floor_geometry || {};
+  const floorMaterial = envConfig.floor_material || {};
+  
+  // Wall config
+  const wallGeometry = envConfig.wall_geometry || {};
+  const wallMaterial = envConfig.wall_material || {};
+  
+  // Particles config
+  const particlesConfig = envConfig.particles || {};
 
   return (
     <>
-      {/* Controles de Câmera */}
       <CameraControls 
         ref={cameraControls}
-        minDistance={3}
-        maxDistance={8}
-        minPolarAngle={Math.PI / 4}
-        maxPolarAngle={Math.PI / 2}
+        minDistance={minDistance}
+        maxDistance={maxDistance}
+        minPolarAngle={minPolarAngle}
+        maxPolarAngle={maxPolarAngle}
       />
 
-      {/* Ambiente */}
-      <Environment preset={THEME.environment} />
+      {/* Environment preset configurável */}
+      <Environment preset={envConfig.preset || "city"} />
       
-      {/* Céu Gradiente */}
-      <Sky
-        distance={450000}
-        sunPosition={[0, 1, 0]}
-        inclination={0.6}
-        azimuth={0.25}
-      />
-
-      {/* Intensidade da luz baseada no tema */}
-      <ambientLight intensity={THEME.ambientIntensity} />
+      {/* 💡 LUZES DINÂMICAS */}
       
-      {/* Luz Principal (Key Light) */}
-      <directionalLight
-        position={[5, 5, 5]}
-        intensity={1.2}
-        castShadow
-        shadow-mapSize={[2048, 2048]}
-        shadow-camera-far={50}
-        shadow-camera-left={-10}
-        shadow-camera-right={10}
-        shadow-camera-top={10}
-        shadow-camera-bottom={-10}
-      />
+      {/* Ambient Light */}
+      {lightingConfig.ambient && (
+        <ambientLight 
+          intensity={lightingConfig.ambient.intensity ?? 0.4} 
+        />
+      )}
+      
+      {/* Directional Lights */}
+      {lightingConfig.directional?.map((light, i) => (
+        <directionalLight 
+          key={`dir-${i}`}
+          position={light.position || [0, 0, 0]}
+          intensity={light.intensity ?? 1}
+          color={light.color || "#ffffff"}
+          castShadow={light.castShadow ?? false}
+          shadow-mapSize={light.shadowMapSize || [2048, 2048]}
+        />
+      ))}
+      
+      {/* Spot Lights */}
+      {lightingConfig.spot?.map((light, i) => (
+        <spotLight 
+          key={`spot-${i}`}
+          position={light.position || [0, 5, 0]}
+          intensity={light.intensity ?? 1}
+          angle={light.angle ?? 0.6}
+          penumbra={light.penumbra ?? 0.5}
+          color={light.color || "#ffffff"}
+          castShadow={light.castShadow ?? false}
+        />
+      ))}
+      
+      {/* Point Lights */}
+      {lightingConfig.point?.map((light, i) => (
+        <pointLight 
+          key={`point-${i}`}
+          position={light.position || [0, 0, 0]}
+          intensity={light.intensity ?? 1}
+          color={light.color || "#ffffff"}
+        />
+      ))}
+      
+      {/* Fallback: Luzes padrão se nenhuma configuração */}
+      {!lightingConfig.ambient && !lightingConfig.directional && (
+        <>
+          <ambientLight intensity={0.4} />
+          <directionalLight 
+            position={[5, 5, 5]} 
+            intensity={1.2} 
+            castShadow 
+            shadow-mapSize={[2048, 2048]} 
+          />
+          <directionalLight 
+            position={[-5, 3, -5]} 
+            intensity={0.5} 
+            color="#b8d4ff" 
+          />
+          <spotLight 
+            position={[0, 5, -5]} 
+            intensity={0.8} 
+            angle={0.6} 
+            penumbra={0.5} 
+            color="#ffd4a3" 
+            castShadow 
+          />
+          <pointLight position={[-3, 2, 2]} intensity={0.3} color="#4a90ff" />
+          <pointLight position={[3, 2, 2]} intensity={0.3} color="#ff6b9d" />
+        </>
+      )}
 
-      {/* Luz de Preenchimento (Fill Light) */}
-      <directionalLight
-        position={[-5, 3, -5]}
-        intensity={0.5}
-        color="#b8d4ff"
-      />
-
-      {/* Luz de Destaque (Rim Light) */}
-      <spotLight
-        position={[0, 5, -5]}
-        intensity={0.8}
-        angle={0.6}
-        penumbra={0.5}
-        color="#ffd4a3"
-        castShadow
-      />
-
-      {/* Luzes Pontuais para Profundidade */}
-      <pointLight position={[-3, 2, 2]} intensity={0.3} color="#4a90ff" />
-      <pointLight position={[3, 2, 2]} intensity={0.3} color="#ff6b9d" />
-
-      {/* Avatar */}
+      {/* 🤖 AVATAR */}
       <Avatar position={[0, 0, 0]} />
 
-      {/* Sombras de Contato (mais realistas) */}
-      <ContactShadows
-        position={[0, 0, 0]}
-        opacity={0.5}
-        scale={10}
-        blur={2}
-        far={4}
-        resolution={256}
-        color="#000000"
+      {/* SOMBRAS CONFIGURÁVEIS */}
+      <ContactShadows 
+        position={shadowsConfig.position || [0, 0, 0]}
+        opacity={shadowsConfig.opacity ?? 0.5}
+        scale={shadowsConfig.scale ?? 10}
+        blur={shadowsConfig.blur ?? 2}
+        far={shadowsConfig.far ?? 4}
+        resolution={shadowsConfig.resolution ?? 256}
+        color={shadowsConfig.color || "#000000"}
       />
 
-      {/* Chão */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]} receiveShadow>
-        <planeGeometry args={[20, 20]} />
-        <meshStandardMaterial 
-          color={THEME.floorColor}
-          roughness={0.3}
-          metalness={0.8}
-          envMapIntensity={0.5}
-        />
-      </mesh>
-
-      {/* Parede de Fundo */}
-      <mesh position={[0, 4, -5]} receiveShadow>
-        <planeGeometry args={[20, 12]} />
-        <meshStandardMaterial 
-          color={THEME.bgColor}
-          roughness={0.8}
-          metalness={0.2}
-        />
-      </mesh>
-
-      {/* Partículas */}
-      <Sparkles
-        count={50}
-        scale={10}
-        size={2}
-        speed={0.3}
-        opacity={0.4}
-        color={THEME.sparkleColor}
-      />
-
-      {/* Painéis Laterais */}
-      <group position={[-4, 1.5, 0]}>
-        <mesh castShadow>
-          <boxGeometry args={[0.1, 3, 2]} />
+      {/* 🏢 CHÃO 3D - Configurável */}
+      {envConfig.show_floor !== false && (
+        <mesh 
+          rotation={[-Math.PI / 2, 0, 0]} 
+          position={[0, -0.01, 0]} 
+          receiveShadow
+        >
+          <planeGeometry args={[
+            floorGeometry.width ?? 20,
+            floorGeometry.height ?? 20
+          ]} />
           <meshStandardMaterial 
-            color="#16213e"
-            emissive={THEME.accentColor1}
-            emissiveIntensity={0.3}
-            roughness={0.2}
-            metalness={0.9}
+            color={envConfig.floor_color || '#1a1a2e'}
+            roughness={floorMaterial.roughness ?? 0.3}
+            metalness={floorMaterial.metalness ?? 0.8}
+            envMapIntensity={floorMaterial.envMapIntensity ?? 0.5}
           />
         </mesh>
-      </group>
+      )}
 
-      <group position={[4, 1.5, 0]}>
-        <mesh castShadow>
-          <boxGeometry args={[0.1, 3, 2]} />
+      {/* 🎨 PAREDE 3D - Configurável */}
+      {envConfig.show_wall !== false && (
+        <mesh 
+          position={wallGeometry.position || [0, 4, -5]} 
+          receiveShadow
+        >
+          <planeGeometry args={[
+            wallGeometry.width ?? 20,
+            wallGeometry.height ?? 12
+          ]} />
           <meshStandardMaterial 
-            color="#16213e"
-            emissive={THEME.accentColor2}
-            emissiveIntensity={0.3}
-            roughness={0.2}
-            metalness={0.9}
+            color={bgConfig.color || '#0f3460'}
+            roughness={wallMaterial.roughness ?? 0.8}
+            metalness={wallMaterial.metalness ?? 0.2}
           />
         </mesh>
-      </group>
+      )}
 
-      {/* Anéis Decorativos */}
-      <mesh position={[0, 3.5, -2]} rotation={[0, 0, Math.PI / 4]}>
-        <torusGeometry args={[1.5, 0.05, 16, 100]} />
-        <meshStandardMaterial 
-          color={THEME.accentColor1}
-          emissive={THEME.accentColor1}
-          emissiveIntensity={0.5}
-          roughness={0.1}
-          metalness={1}
+      {/* ✨ PARTÍCULAS - Configuráveis */}
+      {envConfig.show_particles !== false && (
+        <Sparkles
+          count={particlesConfig.count ?? 50}
+          scale={particlesConfig.scale ?? 10}
+          size={particlesConfig.size ?? 2}
+          speed={particlesConfig.speed ?? 0.3}
+          opacity={particlesConfig.opacity ?? 0.4}
+          color={particlesConfig.color || "#4a90ff"}
         />
-      </mesh>
-
-      <mesh position={[0, 3.5, -2]} rotation={[0, 0, -Math.PI / 4]}>
-        <torusGeometry args={[1.8, 0.04, 16, 100]} />
-        <meshStandardMaterial 
-          color={THEME.accentColor2}
-          emissive={THEME.accentColor2}
-          emissiveIntensity={0.4}
-          roughness={0.1}
-          metalness={1}
-        />
-      </mesh>
+      )}
     </>
   );
 };

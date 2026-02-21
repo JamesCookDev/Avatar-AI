@@ -3,243 +3,258 @@ import { useFrame } from "@react-three/fiber";
 import React, { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { useSpeech } from "../hooks/useSpeech";
-import { useCMSConfig } from "../hooks/useCMSConfig"; // ← Caminho corrigido
+import { useCMSConfig } from "../hooks/useCMSConfig";
 
-// 1. MAPEAMENTO EXATO (Baseado no SEU log do console)
+// ─── MAPEAMENTO DE VISEMES ────────────────────────────────────────────────────
 const visemeMap = {
-  A: "viseme_PP",
-  B: "viseme_kk",
-  C: "viseme_I",
-  D: "viseme_aa",
-  E: "viseme_O",
-  F: "viseme_U",
-  G: "viseme_FF",
-  H: "viseme_TH",
-  X: "viseme_sil",
+  A: "viseme_PP", B: "viseme_kk", C: "viseme_I", D: "viseme_aa",
+  E: "viseme_O",  F: "viseme_U",  G: "viseme_FF", H: "viseme_TH", X: "viseme_sil",
 };
 
+// ─── CONSTANTES ───────────────────────────────────────────────────────────────
+const LERP_IN  = 0.4;   // velocidade de entrada dos visemes
+const LERP_OUT = 0.12;  // velocidade de saída (mais suave)
+const BLINK_INTERVAL_MIN = 2500;  // ms
+const BLINK_INTERVAL_MAX = 6000;  // ms
+const BLINK_DURATION     = 120;   // ms
+
+// ─── HOOK: Idle breathing (head y-bob) ───────────────────────────────────────
+function useIdleBreathing(groupRef, amplitude = 0.004, speed = 0.6) {
+  const t = useRef(0);
+  useFrame((_, delta) => {
+    if (!groupRef.current) return;
+    t.current += delta * speed;
+    groupRef.current.position.y = Math.sin(t.current) * amplitude;
+  });
+}
+
+// ─── HOOK: Eye blink ─────────────────────────────────────────────────────────
+function useEyeBlink(morphMeshesRef) {
+  const nextBlink = useRef(Date.now() + rand(BLINK_INTERVAL_MIN, BLINK_INTERVAL_MAX));
+  const blinkEnd  = useRef(0);
+
+  useFrame(() => {
+    const now = Date.now();
+    const isBlinking = now < blinkEnd.current;
+
+    morphMeshesRef.current.forEach((mesh) => {
+      if (!mesh.morphTargetDictionary || !mesh.morphTargetInfluences) return;
+      const targets = ["eyeBlinkLeft", "eyeBlinkRight"];
+      targets.forEach((t) => {
+        const idx = mesh.morphTargetDictionary[t];
+        if (idx === undefined) return;
+        mesh.morphTargetInfluences[idx] = THREE.MathUtils.lerp(
+          mesh.morphTargetInfluences[idx],
+          isBlinking ? 1 : 0,
+          isBlinking ? 0.5 : 0.3
+        );
+      });
+    });
+
+    if (!isBlinking && now >= nextBlink.current) {
+      blinkEnd.current  = now + BLINK_DURATION;
+      nextBlink.current = now + BLINK_DURATION + rand(BLINK_INTERVAL_MIN, BLINK_INTERVAL_MAX);
+    }
+  });
+}
+
+function rand(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+// ─── HOOK: Subtle head look-around when idle ─────────────────────────────────
+function useIdleHeadLook(groupRef, isTalking) {
+  const target = useRef({ x: 0, y: 0 });
+  const current = useRef({ x: 0, y: 0 });
+  const nextChange = useRef(Date.now() + 3000);
+
+  useFrame((_, delta) => {
+    if (!groupRef.current) return;
+    const now = Date.now();
+    if (!isTalking && now >= nextChange.current) {
+      target.current.x = (Math.random() - 0.5) * 0.06;
+      target.current.y = (Math.random() - 0.5) * 0.04;
+      nextChange.current = now + rand(2000, 5000);
+    }
+    if (isTalking) {
+      target.current.x = 0;
+      target.current.y = 0;
+    }
+    current.current.x = THREE.MathUtils.lerp(current.current.x, target.current.x, delta * 1.5);
+    current.current.y = THREE.MathUtils.lerp(current.current.y, target.current.y, delta * 1.5);
+    groupRef.current.rotation.x = current.current.y;
+    groupRef.current.rotation.y = current.current.x;
+  });
+}
+
+// ─── COMPONENTE PRINCIPAL ─────────────────────────────────────────────────────
 export function Avatar(props) {
-  const { scene } = useGLTF("/models/avatar.glb");
-  const { animations: animationClips } = useGLTF("/models/animations.glb");
   const { message, onMessagePlayed } = useSpeech();
-  
-  // ✅ INTEGRAÇÃO CMS - Busca configurações do painel
-  const { colors, textures, material, loading, error, isConnected } = useCMSConfig();
+  const { ui, isConnected, error } = useCMSConfig();
 
-  const group = useRef();
-  const { actions } = useAnimations(animationClips, group);
-  
-  const audioRef = useRef(null); 
+  // ── Config CMS ──────────────────────────────────────────────────────────────
+  const avatarConfig = ui?.components?.avatar || {};
+  const modelsConfig    = avatarConfig.models      || {};
+  const animationsConfig = avatarConfig.animations || {};
+  const materialsConfig  = avatarConfig.materials  || {};
+
+  const avatarUrl      = modelsConfig.avatar_url     || "/models/avatar.glb";
+  const animationsUrl  = modelsConfig.animations_url || "/models/animations.glb";
+  const idleAnimation  = animationsConfig.idle    || "Idle";
+  const talkingAnimation = animationsConfig.talking || "TalkingOne";
+  const defaultRoughness = materialsConfig.roughness ?? 0.5;
+  const defaultMetalness = materialsConfig.metalness ?? 0.0;
+
+  const colors = avatarConfig.colors || { shirt: '#1E3A8A', pants: '#1F2937', shoes: '#000000' };
+  const position = avatarConfig.position || 'center';
+  const scale    = avatarConfig.scale ?? 1.5;
+
+  // ── Carregar modelos ─────────────────────────────────────────────────────────
+  const { scene } = useGLTF(avatarUrl);
+  const { animations: animationClips } = useGLTF(animationsUrl);
+
+  // ── Refs ─────────────────────────────────────────────────────────────────────
+  const group               = useRef();
+  const headGroup           = useRef();   // group para head-look
+  const { actions }         = useAnimations(animationClips, group);
+  const audioRef            = useRef(null);
   const [lipsync, setLipsync] = useState(null);
-  
-  const morphMeshesRef = useRef([]); 
-  const onMessagePlayedRef = useRef(onMessagePlayed);
+  const morphMeshesRef      = useRef([]);
+  const onMessagePlayedRef  = useRef(onMessagePlayed);
+  const isTalking           = !!message;
 
-  useEffect(() => {
-    onMessagePlayedRef.current = onMessagePlayed;
-  }, [onMessagePlayed]);
+  useEffect(() => { onMessagePlayedRef.current = onMessagePlayed; }, [onMessagePlayed]);
 
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // MAPEAMENTO DE MESHES → CORES DO UNIFORME
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Ajuste os nomes abaixo conforme o log do console mostrar
-  const MESH_COLOR_MAP = {
-    // Ready Player Me padrão
-    'Wolf3D_Outfit_Top': 'shirt',
-    'Wolf3D_Outfit_Bottom': 'pants',
-    'Wolf3D_Outfit_Footwear': 'shoes',
-    // Avaturn / Mixamo
-    'Shirt': 'shirt',
-    'Pants': 'pants',
-    'Shoes': 'shoes',
-    // Genéricos
-    'Top': 'shirt',
-    'Bottom': 'pants',
-    'Footwear': 'shoes',
-    'outfit_top': 'shirt',
-    'outfit_bottom': 'pants',
-    'outfit_footwear': 'shoes',
-  };
+  // ── Idle breathing (vertical bob) ───────────────────────────────────────────
+  useIdleBreathing(group, 0.003, 0.5);
 
-  // ✅ APLICAR CONFIGURAÇÕES DO CMS
+  // ── Eye blink autônomo ───────────────────────────────────────────────────────
+  useEyeBlink(morphMeshesRef);
+
+  // ── Head look-around quando idle ────────────────────────────────────────────
+  useIdleHeadLook(headGroup, isTalking);
+
+  // ── Aplicar cores da roupa ───────────────────────────────────────────────────
   useEffect(() => {
     if (!scene || !colors) return;
-
-    console.log('🎨 [CMS] Aplicando configurações ao avatar...');
-    console.log('   📋 Cores recebidas:', colors);
-    
-    let appliedCount = 0;
-    
     scene.traverse((child) => {
-      if (child.isMesh && child.material) {
-        const mat = child.material;
-        const meshName = child.name;
-        
-        // Verifica se esta mesh tem cor específica mapeada
-        const colorKey = MESH_COLOR_MAP[meshName];
-        
-        if (colorKey && colors[colorKey]) {
-          // Aplica cor específica da peça (camisa, calça, sapato)
-          mat.color = new THREE.Color(colors[colorKey]);
-          console.log(`   ✓ ${meshName}: ${colors[colorKey]} (${colorKey})`);
-          appliedCount++;
-        } else if (meshName.toLowerCase().includes('body') || meshName.toLowerCase().includes('skin')) {
-          // Não altera cor do corpo/pele
-          console.log(`   ⏭️ ${meshName}: mantido (corpo/pele)`);
-        } else if (meshName.toLowerCase().includes('hair') || meshName.toLowerCase().includes('head')) {
-          // Não altera cabelo/cabeça
-          console.log(`   ⏭️ ${meshName}: mantido (cabelo/cabeça)`);
-        }
-
-        // Aplica propriedades do material para todas as meshes de roupa
-        if (colorKey && material) {
-          mat.roughness = material.roughness ?? 0.5;
-          mat.metalness = material.metalness ?? 0.0;
-        }
-
-        mat.needsUpdate = true;
-      }
+      if (!child.isMesh || !child.material) return;
+      const mat  = child.material;
+      const name = child.name.toLowerCase();
+      if (name.includes('shirt') || name.includes('top'))             mat.color = new THREE.Color(colors.shirt);
+      if (name.includes('pants') || name.includes('bottom'))          mat.color = new THREE.Color(colors.pants);
+      if (name.includes('shoes') || name.includes('footwear'))        mat.color = new THREE.Color(colors.shoes);
+      mat.roughness    = defaultRoughness;
+      mat.metalness    = defaultMetalness;
+      mat.needsUpdate  = true;
     });
-    
-    if (appliedCount === 0) {
-      console.warn('⚠️ [CMS] Nenhuma mesh mapeada! Verifique os nomes no log DEBUG.');
-    } else {
-      console.log(`✅ [CMS] ${appliedCount} peças atualizadas`);
-    }
-  }, [scene, colors, material]);
+  }, [scene, colors, defaultRoughness, defaultMetalness]);
 
-  // --- ANIMAÇÃO DE CORPO ---
+  // ── Animação de corpo ────────────────────────────────────────────────────────
   useEffect(() => {
     if (!actions) return;
-    const currentAnimation = message ? (message.animation || "TalkingOne") : "Idle";
-    
-    if (actions[currentAnimation]) {
-      actions[currentAnimation].reset().fadeIn(0.5).play();
-      return () => {
-        actions[currentAnimation]?.fadeOut(0.5);
-      };
+    const anim = message ? (message.animation || talkingAnimation) : idleAnimation;
+    if (actions[anim]) {
+      actions[anim].reset().fadeIn(0.5).play();
+      return () => actions[anim]?.fadeOut(0.5);
     }
-  }, [message, actions]);
+  }, [message, actions, idleAnimation, talkingAnimation]);
 
-  // --- DETECTOR DE PEÇAS ---
+  // ── Coletar meshes com morph targets ────────────────────────────────────────
   useEffect(() => {
     if (!scene) return;
     morphMeshesRef.current = [];
-    
-    console.log('🔍 [DEBUG] Analisando estrutura do avatar...');
     scene.traverse((child) => {
       if (child.isMesh) {
-        // Log para descobrir os nomes das meshes
-        console.log(`   📦 Mesh: "${child.name}" | Material: ${child.material?.name || 'sem nome'}`);
-        
-        if (child.morphTargetDictionary) {
-          morphMeshesRef.current.push(child);
-        }
-        child.castShadow = true;
+        if (child.morphTargetDictionary) morphMeshesRef.current.push(child);
+        child.castShadow    = true;
         child.receiveShadow = true;
       }
     });
-    console.log('🔍 [DEBUG] Total de meshes encontradas:', morphMeshesRef.current.length);
   }, [scene]);
 
-  // --- PLAYER DE ÁUDIO ---
+  // ── Player de áudio + lipsync data ──────────────────────────────────────────
   useEffect(() => {
     if (!message) {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current = null;
-      }
+      audioRef.current?.pause();
+      audioRef.current = null;
       return;
     }
 
     setLipsync(message.lipsync);
-    
-    const newAudio = new Audio("data:audio/mp3;base64," + message.audio);
-    audioRef.current = newAudio;
-    
-    newAudio.onended = () => {
-      if (onMessagePlayedRef.current) onMessagePlayedRef.current();
-    };
-    
-    newAudio.play().catch(e => console.error("Erro playback:", e));
+    const audio = new Audio("data:audio/mp3;base64," + message.audio);
+    audioRef.current = audio;
 
-    return () => {
-      newAudio.pause();
-      newAudio.currentTime = 0;
-    };
+    audio.onended = () => onMessagePlayedRef.current?.();
+    audio.play().catch((e) => console.error("[Avatar] Erro playback:", e));
+
+    return () => { audio.pause(); audio.currentTime = 0; };
   }, [message]);
 
-  // --- LIPSYNC LOOP ---
+  // ── Lipsync frame loop ───────────────────────────────────────────────────────
   useFrame(() => {
-    if (morphMeshesRef.current.length === 0 || !lipsync || !audioRef.current) {
-      morphMeshesRef.current.forEach((mesh) => {
-        if (mesh.morphTargetInfluences && mesh.morphTargetDictionary) {
-          Object.keys(visemeMap).forEach(key => {
-            const targetName = visemeMap[key];
-            const index = mesh.morphTargetDictionary[targetName];
-            if (index !== undefined) {
-              mesh.morphTargetInfluences[index] = THREE.MathUtils.lerp(
-                mesh.morphTargetInfluences[index], 0, 0.1
-              );
-            }
-          });
-        }
+    const meshes = morphMeshesRef.current;
+    if (!meshes.length) return;
+
+    // Sem áudio → reset suave de todos os visemes de boca
+    if (!lipsync || !audioRef.current || audioRef.current.paused || audioRef.current.ended) {
+      meshes.forEach((mesh) => {
+        if (!mesh.morphTargetInfluences || !mesh.morphTargetDictionary) return;
+        Object.values(visemeMap).forEach((vName) => {
+          const idx = mesh.morphTargetDictionary[vName];
+          if (idx !== undefined)
+            mesh.morphTargetInfluences[idx] = THREE.MathUtils.lerp(mesh.morphTargetInfluences[idx], 0, LERP_OUT);
+        });
       });
       return;
     }
 
-    const currentAudioTime = audioRef.current.currentTime;
-    
-    if (audioRef.current.paused || audioRef.current.ended) return;
+    const t = audioRef.current.currentTime;
+    const cue = lipsync.mouthCues?.find((c) => t >= c.start && t <= c.end);
+    const targetViseme = cue ? visemeMap[cue.value] : visemeMap["X"];
 
-    const currentCue = lipsync.mouthCues.find((cue) => {
-      return currentAudioTime >= cue.start && currentAudioTime <= cue.end;
-    });
-
-    const targetViseme = currentCue ? visemeMap[currentCue.value] : visemeMap["X"];
-
-    morphMeshesRef.current.forEach((mesh) => {
+    meshes.forEach((mesh) => {
       if (!mesh.morphTargetDictionary || !mesh.morphTargetInfluences) return;
 
-      const targetIndex = mesh.morphTargetDictionary[targetViseme];
-      let finalIndex = targetIndex;
-      
-      if (finalIndex === undefined && targetViseme !== visemeMap["X"]) {
-        finalIndex = mesh.morphTargetDictionary["mouthOpen"];
-      }
+      let finalIdx = mesh.morphTargetDictionary[targetViseme];
+      // Fallback para mouthOpen
+      if (finalIdx === undefined && targetViseme !== visemeMap["X"])
+        finalIdx = mesh.morphTargetDictionary["mouthOpen"];
 
-      if (finalIndex !== undefined) {
-        Object.values(visemeMap).forEach((vName) => {
-          const idx = mesh.morphTargetDictionary[vName];
-          if (idx !== undefined && idx !== finalIndex) {
-            mesh.morphTargetInfluences[idx] = THREE.MathUtils.lerp(
-              mesh.morphTargetInfluences[idx], 0, 0.4
-            );
-          }
-        });
+      // Reset outros visemes de boca (não piscar)
+      Object.values(visemeMap).forEach((vName) => {
+        const idx = mesh.morphTargetDictionary[vName];
+        if (idx !== undefined && idx !== finalIdx)
+          mesh.morphTargetInfluences[idx] = THREE.MathUtils.lerp(mesh.morphTargetInfluences[idx], 0, LERP_OUT);
+      });
 
-        mesh.morphTargetInfluences[finalIndex] = THREE.MathUtils.lerp(
-          mesh.morphTargetInfluences[finalIndex], 1, 0.4
-        );
-      }
+      if (finalIdx !== undefined)
+        mesh.morphTargetInfluences[finalIdx] = THREE.MathUtils.lerp(mesh.morphTargetInfluences[finalIdx], 1, LERP_IN);
     });
   });
 
-  // ✅ LOG DE STATUS DA CONEXÃO
+  // ── Log de conexão ───────────────────────────────────────────────────────────
   useEffect(() => {
-    if (isConnected) {
-      console.log('✅ [CMS] Conectado ao painel!');
-    } else if (error) {
-      console.error('❌ [CMS] Erro de conexão:', error);
-    }
+    if (isConnected) console.log('✅ [Avatar] Conectado ao CMS!');
+    else if (error)  console.error('❌ [Avatar] Erro:', error);
   }, [isConnected, error]);
 
+  // ── Posição X ────────────────────────────────────────────────────────────────
+  let avatarX = 0;
+  if      (typeof position === 'string' && position.includes('left'))  avatarX = -2;
+  else if (typeof position === 'string' && position.includes('right')) avatarX = 2;
+  else if (typeof position === 'number')                               avatarX = position;
+
   return (
-    <group ref={group} {...props} dispose={null}>
-      <primitive object={scene} />
+    <group ref={group} {...props} dispose={null} position={[avatarX, 0, 0]} scale={scale}>
+      {/* Head-look sub-group — rotaciona apenas a parte superior */}
+      <group ref={headGroup}>
+        <primitive object={scene} />
+      </group>
     </group>
   );
 }
 
+// ── Preload padrão ───────────────────────────────────────────────────────────
 useGLTF.preload("/models/avatar.glb");
 useGLTF.preload("/models/animations.glb");

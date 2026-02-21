@@ -789,6 +789,47 @@ body {
   }
 }
 
+/* ================================
+   CONTROLE DE LAYOUT DINÂMICO (CMS)
+   ================================ */
+
+/* Quando o Hub mandar o chat pra Esquerda */
+.dropdown-container.align-left {
+  right: auto !important; /* Desliga o right fixo */
+  left: 30px;
+  animation: slideInLeft 0.8s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+/* Quando o Hub mandar o chat pra Direita (Padrão) */
+.dropdown-container.align-right {
+  left: auto !important; /* Desliga o left se houver */
+  right: 30px;
+  animation: slideInRight 0.8s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+/* Ajusta o painel suspenso para abrir pro lado certo */
+.dropdown-container.align-left .dropdown-menu {
+  right: auto;
+  left: 0;
+}
+
+@keyframes slideInLeft {
+  from { transform: translateX(-100px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+/* Opcional: Se quiser que o Header superior também mude de lado */
+.chat-header.align-left {
+  left: 30px !important;
+  transform: none !important;
+}
+
+.chat-header.align-right {
+  left: auto !important;
+  right: 30px !important;
+  transform: none !important;
+}
+
 @media (max-width: 480px) {
   .dropdown-container {
     right: 15px;
@@ -819,3 +860,85 @@ body {
   }
 }
 
+/* ================================
+   MODOS DE LAYOUT (FULLSCREEN, SPLIT, BOX)
+   ================================ */
+
+/* 1. MODO TELA CHEIA (Padrão) */
+.layout-fullscreen .canvas-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+}
+
+/* 2. MODO TELA DIVIDIDA */
+.layout-split {
+  display: flex;
+  flex-direction: row;
+}
+.layout-split .canvas-container {
+  width: 40vw;
+  height: 100vh;
+  position: relative;
+}
+.layout-split .ui-container {
+  width: 60vw;
+  height: 100vh;
+  position: relative;
+}
+
+/* 3. MODO AVATAR NO QUADRADO (BOX) */
+.layout-box .canvas-container {
+  position: absolute;
+  bottom: 40px;
+  left: 40px;
+  width: 350px;
+  height: 450px;
+  border-radius: 24px;
+  overflow: hidden;
+  box-shadow: 0 30px 60px rgba(0,0,0,0.6);
+  border: 2px solid rgba(255,255,255,0.2);
+  background: rgba(0,0,0,0.3);
+  backdrop-filter: blur(10px);
+  z-index: 50;
+}
+.layout-box .dropdown-container {
+  /* Quando o Avatar tá pequeno, o menu vai pro centro e fica gigante */
+  bottom: 50%;
+  right: 50%;
+  transform: translate(50%, 50%);
+}
+.layout-box .dropdown-menu {
+  width: 600px;
+  max-width: 90vw;
+  transform: scale(1.2); /* Deixa os botões maiores */
+}
+
+
+
+/* ================================
+   POSIÇÕES DINÂMICAS DO CHAT (HUB)
+   ================================ */
+.dropdown-container.bottom_right { bottom: 30px; right: 30px; left: auto; top: auto; }
+.dropdown-container.bottom_left { bottom: 30px; left: 30px; right: auto; top: auto; }
+.dropdown-container.top_right { top: 30px; right: 30px; left: auto; bottom: auto; }
+.dropdown-container.top_left { top: 30px; left: 30px; right: auto; bottom: auto; }
+
+/* Se o menu estiver no topo, ele tem que abrir para baixo */
+.dropdown-container.top_left .dropdown-menu,
+.dropdown-container.top_right .dropdown-menu {
+  bottom: auto;
+  top: calc(100% + 12px);
+  animation: dropdownOpenDown 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+@keyframes dropdownOpenDown {
+  from { opacity: 0; transform: translateY(-20px) scale(0.9); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Header Dinâmico */
+.chat-header.bottom_right, .chat-header.top_right { right: 30px; left: auto; transform: none; }
+.chat-header.bottom_left, .chat-header.top_left { left: 30px; right: auto; transform: none; }
