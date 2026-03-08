@@ -1,22 +1,24 @@
 /**
  * useCMSConfig — Polling + Supabase Realtime (Live Preview do Hub)
  * 
- * NOVA ENV (Auto-Registro):
+ * Variáveis de ambiente necessárias no .env local:
  *   VITE_CMS_API_URL=https://<project>.supabase.co/functions/v1
+ *   VITE_TOTEM_API_KEY=<api_key do dispositivo no Hub>
  *   VITE_SUPABASE_ANON_KEY=<anon key do projeto>
- *   VITE_SUPABASE_URL=<url do projeto>  (para Realtime)
- *   VITE_ORG_ID=<uuid da organização>
- *   VITE_CMS_POLL_INTERVAL=15000  (opcional, padrão 15s)
- *
- * O deviceId é passado como opção (vem do useAutoRegister no App.jsx)
+ *   VITE_TOTEM_DEVICE_ID=<id do dispositivo — para Realtime>
+ *   VITE_CMS_POLL_INTERVAL=15000   (opcional, padrão 15s)
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
-const CMS_API_URL       = import.meta.env.VITE_CMS_API_URL       || '';
+const CMS_API_URL    = import.meta.env.VITE_CMS_API_URL    || '';
+const API_KEY        = import.meta.env.VITE_TOTEM_API_KEY  || '';
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
-const SUPABASE_URL      = import.meta.env.VITE_SUPABASE_URL || CMS_API_URL.replace('/functions/v1', '');
-const POLL_INTERVAL     = parseInt(import.meta.env.VITE_CMS_POLL_INTERVAL) || 15000;
+const DEVICE_ID      = import.meta.env.VITE_TOTEM_DEVICE_ID || '';
+const POLL_INTERVAL  = parseInt(import.meta.env.VITE_CMS_POLL_INTERVAL) || 15000;
+
+// Extrair URL base do Supabase a partir da URL da edge function
+const SUPABASE_URL = CMS_API_URL.replace('/functions/v1', '');
 
 // Cliente Supabase para Realtime (Broadcast)
 let supabaseClient = null;
@@ -28,26 +30,23 @@ function getSupabaseClient() {
 }
 
 export function useCMSConfig(options = {}) {
-  const { pollInterval = POLL_INTERVAL, deviceId = null } = options;
+  const { pollInterval = POLL_INTERVAL } = options;
 
   const [ui, setUi] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isOffline, setIsOffline] = useState(false);
-  const [isLive, setIsLive] = useState(false);
+  const [isLive, setIsLive] = useState(false); // true quando conectado via Realtime
 
   const abortRef = useRef(null);
   const lastHashRef = useRef('');
-  const deviceIdRef = useRef(deviceId);
-  useEffect(() => { deviceIdRef.current = deviceId; }, [deviceId]);
 
   // ──────────────────────────────────────────────────────────────────
-  // 1. FETCH polling — busca a config na edge function via device_id
-  // ──────────────────────────────────────────────────────────────────
+  // 1. FETCH polling — busca a config completa na edge function
+  // ───────────��──────────────────────────────────────────────────────
   const fetchConfig = useCallback(async () => {
-    const did = deviceIdRef.current;
-    if (!CMS_API_URL || !did) {
-      console.warn('[CMS] VITE_CMS_API_URL ou deviceId não disponíveis.');
+    if (!CMS_API_URL || !API_KEY) {
+      console.warn('[CMS] VITE_CMS_API_URL ou VITE_TOTEM_API_KEY não configurados.');
       setLoading(false);
       return;
     }
@@ -56,15 +55,13 @@ export function useCMSConfig(options = {}) {
     abortRef.current = new AbortController();
 
     try {
-      const headers = {
-        'x-totem-device-id': did,
-        'apikey': SUPABASE_ANON_KEY,
-        'Content-Type': 'application/json',
-      };
-
       const res = await fetch(`${CMS_API_URL}/totem-config`, {
         method: 'GET',
-        headers,
+        headers: {
+          'x-totem-api-key': API_KEY,
+          'apikey': SUPABASE_ANON_KEY,
+          'Content-Type': 'application/json',
+        },
         signal: abortRef.current.signal,
       });
 
@@ -94,7 +91,6 @@ export function useCMSConfig(options = {}) {
 
   // Polling inicial + intervalo
   useEffect(() => {
-    if (!deviceId) return;
     fetchConfig();
     const id = setInterval(() => {
       if (!isOffline) fetchConfig();
@@ -103,14 +99,16 @@ export function useCMSConfig(options = {}) {
       clearInterval(id);
       abortRef.current?.abort();
     };
-  }, [fetchConfig, pollInterval, isOffline, deviceId]);
+  }, [fetchConfig, pollInterval, isOffline]);
 
   // ──────────────────────────────────────────────────────────────────
   // 2. REALTIME — canal live-preview:{deviceId} (Supabase Broadcast)
+  //    O Hub envia via Realtime quando o editor está aberto.
+  //    Isso garante atualização instantânea sem esperar o polling.
   // ──────────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!deviceId) {
-      console.warn('[Realtime] deviceId não disponível — Realtime desativado.');
+    if (!DEVICE_ID) {
+      console.warn('[Realtime] VITE_TOTEM_DEVICE_ID não configurado — Realtime desativado.');
       return;
     }
 
@@ -120,27 +118,18 @@ export function useCMSConfig(options = {}) {
       return;
     }
 
-    console.log(`[Realtime] Inscrevendo no canal live-preview:${deviceId}`);
+    console.log(`[Realtime] Inscrevendo no canal live-preview:${DEVICE_ID}`);
 
     const channel = supabase
-      .channel(`live-preview:${deviceId}`)
+      .channel(`live-preview:${DEVICE_ID}`)
       .on('broadcast', { event: 'ui-update' }, ({ payload }) => {
-        // Free canvas format
-        if (payload?.free_canvas) {
-          const hash = JSON.stringify(payload.free_canvas);
-          if (hash !== lastHashRef.current) {
-            lastHashRef.current = hash;
-            setUi(prev => ({ ...prev, _live_free_canvas: payload.free_canvas, _live_ts: payload.ts }));
-            console.log('[Realtime] ✅ free_canvas atualizado via Realtime!');
-          }
-        }
-        // Legacy craft_blocks
-        if (payload?.craft_blocks) {
-          if (payload.craft_blocks !== lastHashRef.current) {
-            lastHashRef.current = payload.craft_blocks;
-            setUi(prev => ({ ...prev, _live_craft_blocks: payload.craft_blocks, _live_ts: payload.ts }));
-            console.log('[Realtime] ✅ craft_blocks atualizados via Realtime!');
-          }
+        // Hub envia craft_blocks (JSON string dos nós Craft.js)
+        const craftBlocks = payload?.craft_blocks;
+        if (!craftBlocks) return;
+        if (craftBlocks !== lastHashRef.current) {
+          lastHashRef.current = craftBlocks;
+          setUi(prev => ({ ...prev, _live_craft_blocks: craftBlocks, _live_ts: payload.ts }));
+          console.log('[Realtime] ✅ craft_blocks atualizados via Realtime!');
         }
       })
       .subscribe((status) => {
@@ -157,14 +146,14 @@ export function useCMSConfig(options = {}) {
       supabase.removeChannel(channel);
       setIsLive(false);
     };
-  }, [deviceId]);
+  }, []);
 
   return {
     ui,
     loading,
     error,
     isOffline,
-    isLive,
+    isLive,        // ← novo: true quando Realtime está ativo
     isConnected: !isOffline && !error,
     refetch: fetchConfig,
   };

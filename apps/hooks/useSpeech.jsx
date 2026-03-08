@@ -14,10 +14,19 @@ const SILENCE_TIMEOUT = 2000; // Tempo de silêncio para "Fim da frase"
 const MIN_AUDIO_SIZE = 1500;  // Ignora áudios muito curtos (cliques)
 const PLAYBACK_COOLDOWN = 500;// Delay após avatar falar antes de reabrir mic
 
+// Fallback seguro para quando Avatar roda dentro do <Canvas> (árvore React separada)
+const SPEECH_FALLBACK = {
+  message: null,
+  onMessagePlayed: () => {},
+  loading: false,
+  listening: false,
+  sendMessage: async () => {},
+  speakDirect: () => {},
+};
+
 export const useSpeech = () => {
   const context = useContext(SpeechContext);
-  if (!context) throw new Error("useSpeech must be used within a SpeechProvider");
-  return context;
+  return context || SPEECH_FALLBACK;
 };
 
 export const SpeechProvider = ({ children }) => {
@@ -65,7 +74,7 @@ export const SpeechProvider = ({ children }) => {
     }, PLAYBACK_COOLDOWN);
   };
 
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // ━━━━━━━━━━━━━━━━━━━━━��━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // 2. ENVIO DE DADOS (TEXTO E ÁUDIO)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const handleBackendResponse = async (response) => {

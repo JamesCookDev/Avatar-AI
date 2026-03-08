@@ -59,7 +59,7 @@ const SYNC_INTERVAL    = parseInt(process.env.SYNC_INTERVAL_MS || '30000', 10);
 const RESTART_COMMAND  = process.env.RESTART_COMMAND || null;
 const BACKUP_FILES     = process.env.BACKUP_FILES !== 'false';
 const VERBOSE          = process.env.VERBOSE === 'true';
-const API_KEY          = process.env.API_KEY || null;
+const API_KEY          = process.env.API_KEY || process.env.API_KEY_2 || null;
 const SUPABASE_URL     = (process.env.SUPABASE_URL || '').replace(/\/$/, '');
 
 // Arquivo local que guarda as versões já instaladas no hardware

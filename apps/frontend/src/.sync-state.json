@@ -1,24 +1,24 @@
 {
   "files": {
     "App.jsx": {
-      "version": "3.1.0",
-      "updated_at": "2026-02-20T21:09:25.260Z"
+      "version": "5.0.0",
+      "updated_at": "2026-03-05T23:03:43.122Z"
     },
     "main.jsx": {
       "version": "1.0.0",
       "updated_at": "2026-02-20T20:44:02.617Z"
     },
     "index.css": {
-      "version": "1.1.0",
-      "updated_at": "2026-02-20T20:44:03.847Z"
+      "version": "2.0.0",
+      "updated_at": "2026-02-24T20:58:10.461Z"
     },
     "hooks/useSpeech.js": {
       "version": "2.1.0",
       "updated_at": "2026-02-20T20:44:04.963Z"
     },
     "hooks/useCMSConfig.js": {
-      "version": "1.2.0",
-      "updated_at": "2026-02-20T20:44:06.506Z"
+      "version": "2.0.0",
+      "updated_at": "2026-03-05T23:03:44.289Z"
     },
     "components/Avatar.jsx": {
       "version": "1.5.0",
@@ -33,9 +33,9 @@
       "updated_at": "2026-02-20T20:44:10.341Z"
     },
     "hooks/useSpeech.jsx": {
-      "version": "2.2.0",
-      "updated_at": "2026-02-20T21:09:26.488Z"
+      "version": "2.3.0",
+      "updated_at": "2026-02-23T16:21:26.542Z"
     }
   },
-  "last_sync": "2026-02-20T23:13:54.092Z"
+  "last_sync": "2026-03-05T23:04:40.507Z"
 }

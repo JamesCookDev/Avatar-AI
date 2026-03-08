@@ -1,40 +1,75 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
-# dependencies
-/node_modules
-/.pnp
+# Dependencies 
+**/node_modules/
+.pnp
 .pnp.js
+.yarn/
 .yarn/install-state.gz
 
-# testing
-/coverage
+# Build / Output
+**/build/
+**/dist/
+**/.next/
+**/out/
+**/.vite/
+**/.turbo/
+**/.cache/
 
-# next.js
-/.next/
-/out/
+# Coverage
+coverage/
 
-# production
-/build
-
-# misc
-.DS_Store
-*.pem
-
-# debug
+# Logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
+*.log
 
-# local env files
-.env*.local
+# Env
+.env
+.env.*
+!.env.example
 
-# vercel
-.vercel
-
-# typescript
+# TypeScript
 *.tsbuildinfo
 next-env.d.ts
 
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
 
-./apps/backend/audios/*.wav
-./apps/backend/audios/*.mp3
+# Secrets 
+*.pem
+*.key
+
+# Vercel 
+.vercel/
+
+# Backend 
+apps/backend/audios/*
+apps/backend/tmp/*
+
+!apps/backend/audios/.gitkeep
+!apps/backend/tmp/.gitkeep
+
+# Binários pesados (speech / lip sync)
+apps/backend/bin/Rhubarb-Lip-Sync-*/
+apps/backend/bin/res/sphinx/
+
+# Modelos / assets grandes
+*.wav
+*.mp3
+*.flac
+*.onnx
+*.pt
+*.bin
+
+
+# Frontend assets gerados
+frontend/node_modules/
+frontend/public/models/tmp/
+
+# Misc
+*.tmp
+*.temp

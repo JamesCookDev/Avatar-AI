@@ -67,7 +67,7 @@ export const SpeechProvider = ({ children }) => {
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // 2. ENVIO DE DADOS (TEXTO E ÁUDIO)
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━��━━━━━━━━━━━━━━━━━━━━
   const handleBackendResponse = async (response) => {
     const data = await response.json();
     if (data.messages && data.messages.length > 0) {
