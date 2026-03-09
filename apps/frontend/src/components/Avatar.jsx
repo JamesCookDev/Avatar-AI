@@ -2,8 +2,8 @@ import { useAnimations, useGLTF } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import React, { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
-import { useSpeech } from "../../../hooks/useSpeech";
-import { useCMSConfig } from "../../../hooks/useCMSConfig";
+import { useSpeech } from "../hooks/useSpeech";
+import { useCMSConfig } from "../hooks/useCMSConfig";
 
 // ─── MAPEAMENTO DE VISEMES ────────────────────────────────────────────────────
 const visemeMap = {

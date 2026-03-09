@@ -1,7 +1,7 @@
 import { CameraControls, Environment, ContactShadows } from "@react-three/drei";
 import { useEffect, useRef } from "react";
 import { Avatar } from "./Avatar";
-import { useCMSConfig } from "../../../hooks/useCMSConfig";
+import { useCMSConfig } from "../hooks/useCMSConfig";
 
 export const Scenario = ({ uiOverride } = {}) => {
   const cameraControls = useRef();

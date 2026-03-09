@@ -30,7 +30,7 @@ export function ChatInterface(p) {
           className="kiosk-menu-item"
           onClick={isFolder ? () => setActiveSubmenu(isOpen ? null : node.id) : () => handleAction(node)}
           style={{
-            display: 'flex', alignItems: 'center', gap: 14, border: 'none',
+            display: 'flex', alignItems: 'center', gap: 14,
             padding: depth === 0 ? '16px 20px' : '12px 16px',
             background: isFolder && isOpen ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.05)',
             borderRadius: 16, marginBottom: 6, width: '100%',
