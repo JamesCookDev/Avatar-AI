@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * ══════════════════════════════════════════════════════════════
- *  TOTEM SYNC WORKER  —  sync-worker.js  v3.0.0
+ *  TOTEM SYNC WORKER  —  sync-worker.js  v3.1.0
  * ══════════════════════════════════════════════════════════════
  *
  *  Automatiza TODO o processo de setup e manutenção do totem:
@@ -27,14 +27,16 @@
  * ══════════════════════════════════════════════════════════════
  */
 
-'use strict';
+import fs from 'fs';
+import path from 'path';
+import https from 'https';
+import http from 'http';
+import { exec, execSync, spawn } from 'child_process';
+import readline from 'readline';
+import { fileURLToPath } from 'url';
 
-const fs            = require('fs');
-const path          = require('path');
-const https         = require('https');
-const http          = require('http');
-const { exec, spawn } = require('child_process');
-const readline      = require('readline');
+const __filename = fileURLToPath(import.meta.url);
+const __dirname  = path.dirname(__filename);
 
 // ─── Args ────────────────────────────────────────────────────
 const ARGS = process.argv.slice(2);
@@ -98,7 +100,6 @@ function fetchText(url) {
 
 function isCommandAvailable(cmd) {
   try {
-    const { execSync } = require('child_process');
     execSync(`${cmd} --version`, { stdio: 'ignore', timeout: 5000 });
     return true;
   } catch { return false; }
@@ -132,8 +133,8 @@ function checkPrerequisites() {
     process.exit(1);
   }
 
-  const nodeVersion = require('child_process').execSync('node --version', { encoding: 'utf8' }).trim();
-  const npmVersion  = require('child_process').execSync('npm --version', { encoding: 'utf8' }).trim();
+  const nodeVersion = execSync('node --version', { encoding: 'utf8' }).trim();
+  const npmVersion  = execSync('npm --version', { encoding: 'utf8' }).trim();
   log(`✅ Node.js ${nodeVersion} / npm ${npmVersion}`);
 }
 
@@ -546,7 +547,7 @@ async function handleRemoteCommand() {
 async function main() {
   console.log('');
   console.log('╔══════════════════════════════════════════════════╗');
-  console.log('║         TOTEM SYNC WORKER  v3.0.0               ║');
+  console.log('║         TOTEM SYNC WORKER  v3.1.0               ║');
   console.log('║         Setup automático completo                ║');
   console.log('╚══════════════════════════════════════════════════╝');
   console.log('');
